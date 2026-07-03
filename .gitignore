@@ -219,6 +219,7 @@ __marimo__/
 
 # Artifacts
 artifacts/
+data/
 
 # Agents Files
 AGENTS.md
