@@ -8,7 +8,6 @@ from typing import Any
 
 from groq import Groq
 
-
 IMAGE_LABEL_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 IMAGE_LABEL_PROMPT = (
     "Describe the contents of the image in 2-3 sentences. "
@@ -152,7 +151,10 @@ def render_svg_to_png(svg_text: str, image_path: Path) -> None:
 
 def build_label_prompt(row: dict[str, Any]) -> str:
     """Build the prompt used to label one processed row."""
-    return "Describe the image in 2-3 sentences. Be concise but include all the major details."
+    return (
+        "Describe the image in 2-3 sentences. "
+        "Be concise but include all the major details."
+    )
 
 
 def extract_label_from_response(response: Any) -> str:

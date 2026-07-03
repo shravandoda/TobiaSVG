@@ -12,3 +12,32 @@ dependencies = [
     "torch>=2.12.1",
     "transformers>=5.12.1",
 ]
+
+[dependency-groups]
+dev = [
+    "commitizen>=4.16.4",
+    "isort>=8.0.1",
+    "pre-commit>=4.6.0",
+    "ruff>=0.15.20",
+    "ty>=0.0.56",
+]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_provider = "pep621"
+version_scheme = "pep440"
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "SIM", "UP"]
+
+[tool.ruff.format]
+quote-style = "double"

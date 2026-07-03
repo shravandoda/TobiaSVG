@@ -5,11 +5,11 @@ from typing import Any
 from datasets import Dataset, IterableDataset
 
 from scripts.data.process_svg import (
+    SvgQualityError,
     build_label_prompt,
     clean_svg,
     render_svg_to_png,
     request_text_label,
-    SvgQualityError,
     validate_svg_quality,
 )
 from scripts.data.sample_dataset import DATASETS, DatasetSpec, sample_dataset
@@ -158,14 +158,20 @@ def process_dataset(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Sample SVG datasets, render images, label rows, and save the final dataset."
+        description=(
+            "Sample SVG datasets, render images, label rows, and save the final "
+            "dataset."
+        )
     )
     parser.add_argument(
         "--dataset",
         action="append",
         choices=sorted(DATASETS),
         default=None,
-        help="Dataset key to process. Pass multiple times, or omit for all configured datasets.",
+        help=(
+            "Dataset key to process. Pass multiple times, or omit for all "
+            "configured datasets."
+        ),
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--buffer-size", type=int, default=10_000)

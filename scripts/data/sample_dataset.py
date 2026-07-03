@@ -78,7 +78,9 @@ def sample_dataset(
             dataset,
             seed=seed,
             buffer_size=buffer_size,
-            sample_size=sample_size if sample_size is not None else spec.raw_sample_size,
+            sample_size=sample_size
+            if sample_size is not None
+            else spec.raw_sample_size,
         )
 
     return IterableDatasetDict(sampled)
@@ -112,7 +114,10 @@ def parse_args() -> argparse.Namespace:
         action="append",
         choices=sorted(DATASETS),
         default=None,
-        help="Dataset key to sample. Pass multiple times, or omit for all configured datasets.",
+        help=(
+            "Dataset key to sample. Pass multiple times, or omit for all "
+            "configured datasets."
+        ),
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--buffer-size", type=int, default=10_000)
