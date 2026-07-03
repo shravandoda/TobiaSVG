@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 
 from scripts.data.sample_dataset import DatasetSpec
 
+IMAGE_ROOT = Path("data/images")
+OUTPUT_ROOT = Path("data/processed/datasets")
+
 
 def load_env_file(path: Path = Path(".env")) -> None:
     if not path.exists():
@@ -13,23 +16,60 @@ def load_env_file(path: Path = Path(".env")) -> None:
     load_dotenv(path)
 
 
-def get_original_filename(row: dict[str, Any], spec: DatasetSpec) -> str:
-    if not spec.id_column:
-        raise ValueError(f"{spec.key} does not define an original filename column.")
+def get_required_row_value(
+    row: dict[str, Any],
+    *,
+    column_name: str | None,
+    dataset_key: str,
+    value_name: str,
+) -> Any:
+    if column_name is None:
+        raise ValueError(f"{dataset_key} does not define a {value_name} column.")
 
-    if spec.id_column not in row:
+    if column_name not in row:
         raise ValueError(
-            f"{spec.key} row is missing original filename column `{spec.id_column}`."
+            f"{dataset_key} row is missing {value_name} column `{column_name}`."
         )
 
-    return str(row[spec.id_column])
+    return row[column_name]
 
 
-def make_example_id(
-    row: dict[str, Any],
-    spec: DatasetSpec,
+def get_source_filename(row: dict[str, Any], spec: DatasetSpec) -> str:
+    return str(
+        get_required_row_value(
+            row,
+            column_name=spec.id_column,
+            dataset_key=spec.key,
+            value_name="filename",
+        )
+    )
+
+
+def get_source_svg(row: dict[str, Any], spec: DatasetSpec) -> str:
+    return str(
+        get_required_row_value(
+            row,
+            column_name=spec.svg_column,
+            dataset_key=spec.key,
+            value_name="SVG",
+        )
+    )
+
+
+def build_image_path(
     *,
+    spec: DatasetSpec,
     split_name: str,
-    index: int,
-) -> str:
-    return get_original_filename(row, spec)
+    filename: str,
+    image_root: Path = IMAGE_ROOT,
+) -> Path:
+    return image_root / spec.key / split_name / f"{filename}.png"
+
+
+def build_split_output_path(
+    *,
+    spec: DatasetSpec,
+    split_name: str,
+    output_root: Path = OUTPUT_ROOT,
+) -> Path:
+    return output_root / spec.key / split_name

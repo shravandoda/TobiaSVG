@@ -1,9 +1,20 @@
 import argparse
+import logging
 import os
-from collections.abc import Iterable
 from dataclasses import dataclass
 
 from datasets import IterableDataset, IterableDatasetDict, load_dataset
+
+from src.project_x.utils.logger import setup_logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class DatasetSpecSplit:
+    sample_size: int
+    target_size: int
 
 
 @dataclass(frozen=True)
@@ -13,8 +24,7 @@ class DatasetSpec:
     config_name: str | None
     svg_column: str
     id_column: str | None
-    raw_sample_size: int
-    target_size: int
+    splits: dict[str, DatasetSpecSplit]
 
 
 DATASETS = {
@@ -24,8 +34,13 @@ DATASETS = {
         config_name=None,
         svg_column="Svg",
         id_column="Filename",
-        raw_sample_size=182_144,
-        target_size=27_600,
+        splits={
+            "train": DatasetSpecSplit(
+                sample_size=182_000,
+                target_size=40_000,
+            ),
+            "test": DatasetSpecSplit(sample_size=474, target_size=474),
+        },
     ),
     "vfig_shapes": DatasetSpec(
         key="vfig_shapes",
@@ -33,8 +48,9 @@ DATASETS = {
         config_name="VFIG-Data-Shapes-and-Arrows",
         svg_column="svg",
         id_column="filename",
-        raw_sample_size=6_545,
-        target_size=6_545,
+        splits={
+            "train": DatasetSpecSplit(sample_size=6_545, target_size=6_545),
+        },
     ),
     "vfig_complex": DatasetSpec(
         key="vfig_complex",
@@ -42,8 +58,7 @@ DATASETS = {
         config_name="VFIG-Data-Complex-Diagrams",
         svg_column="svg",
         id_column="filename",
-        raw_sample_size=60_034,
-        target_size=60_034,
+        splits={"train": DatasetSpecSplit(sample_size=60_000, target_size=60_000)},
     ),
 }
 
@@ -63,27 +78,44 @@ def load_streaming_splits(spec: DatasetSpec) -> IterableDatasetDict:
     return IterableDatasetDict({"train": dataset})
 
 
+def get_split_spec(spec: DatasetSpec, split_name: str) -> DatasetSpecSplit:
+    try:
+        return spec.splits[split_name]
+    except KeyError as exc:
+        raise ValueError(f"{spec.key} does not define split `{split_name}`.") from exc
+
+
 def sample_dataset(
     spec: DatasetSpec,
     *,
     seed: int,
     buffer_size: int,
     sample_size: int | None = None,
-) -> IterableDatasetDict:
-    dataset_dict = load_streaming_splits(spec)
-    sampled = {}
+) -> dict[str, IterableDataset]:
 
-    for split_name, dataset in dataset_dict.items():
+    dataset_dict = load_streaming_splits(spec)
+    sampled: dict[str, IterableDataset] = {}
+
+    for split_name, spec_split in spec.splits.items():
+        if split_name not in dataset_dict:
+            available_splits = ", ".join(str(key) for key in dataset_dict)
+            raise ValueError(
+                f"{spec.key} does not contain split `{split_name}`. "
+                f"Available splits: {available_splits}"
+            )
+
+        dataset = dataset_dict[split_name]
+
         sampled[split_name] = sample_split(
-            dataset,
+            dataset=dataset,
             seed=seed,
             buffer_size=buffer_size,
             sample_size=sample_size
             if sample_size is not None
-            else spec.raw_sample_size,
+            else spec_split.sample_size,
         )
 
-    return IterableDatasetDict(sampled)
+    return sampled
 
 
 def sample_split(
@@ -92,7 +124,7 @@ def sample_split(
     seed: int,
     buffer_size: int,
     sample_size: int,
-) -> Iterable:
+) -> IterableDataset:
     """Sample one streaming split.
 
     HF datasets learning checkpoint:
@@ -120,6 +152,7 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--seed", type=int, default=42)
+    # Shuffle keeps a rolling buffer and samples randomly from that buffer.
     parser.add_argument("--buffer-size", type=int, default=10_000)
     parser.add_argument(
         "--sample-size",
@@ -144,10 +177,10 @@ def main() -> None:
         )
 
         for split_name, dataset in sampled.items():
-            print(f"{spec.key}/{split_name}")
+            logger.info(f"{spec.key}/{split_name}")
             for index, row in enumerate(dataset):
                 source_id = row.get(spec.id_column) if spec.id_column else None
-                print(f"  {index}: {source_id or '<no source id>'}")
+                logger.info(f"  {index}: {source_id or '<no source id>'}")
 
 
 if __name__ == "__main__":

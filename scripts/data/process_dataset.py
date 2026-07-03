@@ -1,4 +1,5 @@
 import argparse
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -7,110 +8,77 @@ from datasets import Dataset, IterableDataset
 from scripts.data.process_svg import (
     SvgQualityError,
     build_label_prompt,
-    clean_svg,
-    render_svg_to_png,
+    clean_validate_and_render_svg,
     request_text_label,
-    validate_svg_quality,
 )
-from scripts.data.sample_dataset import DATASETS, DatasetSpec, sample_dataset
-from scripts.data.utils import load_env_file, make_example_id
+from scripts.data.sample_dataset import (
+    DATASETS,
+    DatasetSpec,
+    sample_dataset,
+)
+from scripts.data.utils import (
+    build_image_path,
+    build_split_output_path,
+    get_source_filename,
+    get_source_svg,
+    load_env_file,
+)
+from src.project_x.utils.logger import setup_logging
 
+setup_logging()
+logger = logging.getLogger(__name__)
 
-def build_image_path(
-    *,
-    image_root: Path,
-    spec: DatasetSpec,
-    split_name: str,
-    filename: str,
-) -> Path:
-    """Path for the rendered PNG that can be joined back by `filename`.
-
-    The final text dataset stores only `filename`, `svg`, and `text`. A later
-    image dataset can use the same `filename` value and load images from:
-    data/images/<dataset>/<split>/<filename>.png
-    """
-    return image_root / spec.key / split_name / f"{filename}.png"
+LOG_EVERY = 500
+FINAL_COLUMNS = ["filename", "svg", "text"]
 
 
 def process_row(
     raw_row: dict[str, Any],
-    *,
     spec: DatasetSpec,
     split_name: str,
-    index: int,
-    image_root: Path,
-    fail_on_error: bool = True,
-) -> dict[str, Any] | None:
-    filename = make_example_id(raw_row, spec, split_name=split_name, index=index)
+) -> dict[str, Any]:
+    filename = get_source_filename(raw_row, spec)
+    raw_svg = get_source_svg(raw_row, spec)
     image_path = build_image_path(
-        image_root=image_root,
         spec=spec,
         split_name=split_name,
         filename=filename,
     )
 
     try:
-        svg = clean_svg(str(raw_row[spec.svg_column]))
-        validate_svg_quality(svg)
-
-        render_svg_to_png(svg, image_path)
-
-        row = {"filename": filename, "svg": svg}
+        svg = clean_validate_and_render_svg(raw_svg, image_path)
+        row: dict[str, str] = {"filename": filename, "svg": svg}
         prompt = build_label_prompt(row)
         text = request_text_label(image_path, prompt=prompt)
+        return {"filename": filename, "svg": svg, "text": text, "keep": True}
     except SvgQualityError as exc:
-        print(f"filtered: {filename} ({exc})")
-        return None
-    except Exception as exc:
-        if fail_on_error:
-            raise
+        logger.info("filtered: %s (%s)", filename, exc)
+        return {"filename": filename, "svg": raw_svg, "text": None, "keep": False}
 
-        print(f"failed: {filename} ({type(exc).__name__}: {exc})")
-        return None
 
-    return {"filename": filename, "svg": svg, "text": text}
+def iter_dataset(dataset: IterableDataset):
+    yield from dataset
 
 
 def process_split(
     dataset: IterableDataset,
-    *,
     spec: DatasetSpec,
     split_name: str,
-    image_root: Path,
-    fail_on_error: bool,
-    target_size: int | None,
 ) -> Dataset:
-    rows = []
+    raw_columns = dataset.column_names or []
+    raw_columns_to_remove = [
+        column_name for column_name in raw_columns if column_name not in FINAL_COLUMNS
+    ]
 
-    for index, raw_row in enumerate(dataset):
-        if target_size is not None and len(rows) >= target_size:
-            break
-
-        row = process_row(
-            raw_row,
-            spec=spec,
-            split_name=split_name,
-            index=index,
-            image_root=image_root,
-            fail_on_error=fail_on_error,
-        )
-        if row is None:
-            continue
-
-        rows.append(row)
-        print(f"processed: {row['filename']}")
-
-    return build_hf_dataset(rows)
-
-
-def build_hf_dataset(rows: list[dict[str, Any]]) -> Dataset:
-    """Build a Hugging Face Dataset from processed Python rows.
-
-    HF datasets learning checkpoint:
-    - convert the list of dictionaries into a Dataset
-    - observe how columns and null values are inferred
-    """
-    return Dataset.from_list(rows)
+    dataset = dataset.map(
+        process_row,
+        fn_kwargs={"spec": spec, "split_name": split_name},
+        remove_columns=raw_columns_to_remove,
+    )
+    dataset = dataset.filter(lambda x: x["keep"])
+    dataset = dataset.take(spec.splits[split_name].target_size)
+    dataset = dataset.select_columns(FINAL_COLUMNS)
+    return Dataset.from_generator(iter_dataset, gen_kwargs={"dataset": dataset})
 
 
 def save_processed_dataset(dataset: Dataset, output_path: Path) -> None:
@@ -126,34 +94,25 @@ def save_processed_dataset(dataset: Dataset, output_path: Path) -> None:
 
 def process_dataset(
     spec: DatasetSpec,
-    *,
-    output_root: Path,
-    image_root: Path,
     seed: int,
     buffer_size: int,
     sample_size: int | None,
-    fail_on_error: bool,
 ) -> None:
     sampled = sample_dataset(
-        spec,
+        spec=spec,
         seed=seed,
         buffer_size=buffer_size,
         sample_size=sample_size,
     )
-    target_size = None if sample_size is not None else spec.target_size
-
     for split_name, dataset in sampled.items():
         processed = process_split(
-            dataset,
+            dataset=dataset,
             spec=spec,
             split_name=split_name,
-            image_root=image_root,
-            fail_on_error=fail_on_error,
-            target_size=target_size,
         )
-        output_path = output_root / spec.key / split_name
+        output_path = build_split_output_path(spec=spec, split_name=split_name)
         save_processed_dataset(processed, output_path)
-        print(f"saved: {output_path}")
+        logger.info(f"saved: {output_path}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -174,7 +133,9 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--buffer-size", type=int, default=10_000)
+    parser.add_argument(
+        "--buffer-size", type=int, default=10_000, help="Buffer size for shuffling"
+    )
     parser.add_argument(
         "--sample-size",
         type=int,
@@ -183,23 +144,6 @@ def parse_args() -> argparse.Namespace:
             "Override each split's raw scan size while developing. "
             "When set, target-size stopping is disabled."
         ),
-    )
-    parser.add_argument(
-        "--image-root",
-        type=Path,
-        default=Path("data/images"),
-        help="Rendered PNG root: <root>/<dataset>/<split>/<filename>.png.",
-    )
-    parser.add_argument(
-        "--output-root",
-        type=Path,
-        default=Path("data/processed/datasets"),
-        help="Where processed Hugging Face datasets should be saved.",
-    )
-    parser.add_argument(
-        "--skip-failed-rows",
-        action="store_true",
-        help="Skip failed rows instead of stopping at the first row error.",
     )
     return parser.parse_args()
 
@@ -213,13 +157,10 @@ def main() -> None:
     for dataset_key in selected_datasets:
         spec = DATASETS[dataset_key]
         process_dataset(
-            spec,
-            output_root=args.output_root,
-            image_root=args.image_root,
+            spec=spec,
             seed=args.seed,
             buffer_size=args.buffer_size,
             sample_size=args.sample_size,
-            fail_on_error=not args.skip_failed_rows,
         )
 
 

@@ -149,6 +149,14 @@ def render_svg_to_png(svg_text: str, image_path: Path) -> None:
     svg2png(bytestring=svg_text.encode("utf-8"), write_to=str(image_path))
 
 
+def clean_validate_and_render_svg(svg_text: str, image_path: Path) -> str:
+    """Normalize an SVG, run quality checks, render it, and return cleaned SVG."""
+    svg = clean_svg(svg_text)
+    validate_svg_quality(svg)
+    render_svg_to_png(svg, image_path)
+    return svg
+
+
 def build_label_prompt(row: dict[str, Any]) -> str:
     """Build the prompt used to label one processed row."""
     return (
