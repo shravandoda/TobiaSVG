@@ -38,14 +38,14 @@ filename
 svg
 text
 caption_style
-source_dataset
+dataset
 ```
 
-`source_dataset` should be added when combining datasets so we can evaluate per dataset later.
+`dataset` should contain the canonical dataset key so we can evaluate per dataset later.
 
 ## Training Tasks
 
-Each row can produce two task variants:
+Each row can produce three task variants:
 
 1. Text-to-SVG
    - input: `text`
@@ -55,7 +55,68 @@ Each row can produce two task variants:
    - input: rendered image from `svg`
    - target: `svg`
 
-Use the same train/validation/test split for both task variants. Do not allow one row's text-to-SVG example in train and image-to-SVG example in validation/test.
+3. Image + corrupted SVG repair
+   - input: rendered image from `svg` plus a corrupted version of `svg`
+   - target: original clean `svg`
+
+Use the same train/validation/test split for all task variants. Do not allow one row's text-to-SVG example in train and image-to-SVG or repair example in validation/test.
+
+The first pass should be text-to-SVG only. Repair belongs in the image-to-SVG phase because it needs visual grounding: the model sees the rendered image, compares it against the corrupted SVG, and predicts the clean SVG.
+
+For repair examples, keep the corruption aligned with the current image curriculum stage. The model should repair examples from the same dataset family it is currently learning, plus replay repair examples from earlier datasets.
+
+Start repair as a small auxiliary task during image-to-SVG training, then increase it once the model has basic visual grounding:
+
+```text
+Image Curriculum 1-2: 10% repair
+Image Curriculum 3-4: 15% repair
+Image Curriculum 5-6: 20% repair
+Final image stabilization: 20% repair
+```
+
+The remaining image-phase examples should be normal image-to-SVG examples.
+
+## Repair Corruptions
+
+Use the repair objective as SVG denoising:
+
+```text
+input: image + corrupted_svg
+target: clean_svg
+```
+
+Corruption types:
+
+- Missing objects: remove one or more visible SVG elements.
+- Wrong z-order: reorder sibling elements so overlap/rendering order is wrong.
+- Primitive degradation: replace or simplify richer primitives, for example path-to-basic-shape approximations.
+- Text corruption: alter, remove, or mask text content and text attributes.
+- Style corruption: perturb fill, stroke, opacity, stroke-width, font, or color values.
+- Geometry perturbation: jitter positions, sizes, path coordinates, endpoints, or transforms.
+- Group flattening: remove or simplify `<g>` nesting and transforms.
+- Truncated SVG: delete trailing characters/tags so the model learns how to close and end SVGs correctly.
+
+Keep most corrupted SVGs close enough to the clean SVG that the task remains repair rather than full regeneration. A useful default is to preserve most of the structure and corrupt one or two localized aspects per example. Increase corruption severity later in the curriculum.
+
+## Training Phases
+
+Use the same dataset curriculum order twice:
+
+1. Text-to-SVG phase
+   - input: text
+   - target: SVG
+   - no images and no repair examples
+   - goal: teach SVG syntax, structure, paths, layout, and dataset-specific SVG style
+
+2. Image-to-SVG phase
+   - input: rendered image
+   - target: SVG
+   - include repair as an auxiliary task
+   - goal: teach visual grounding and image-conditioned SVG generation
+
+3. Final stabilization
+   - mixed image-to-SVG and repair examples
+   - optional small text-to-SVG replay if text prompting quality regresses
 
 ## Curriculum
 
@@ -222,23 +283,41 @@ For checkpointing and reproducibility, each curriculum stage should record:
 
 ## Task Mix
 
-Each curriculum can produce both task variants:
+Use different task mixes for the two phases.
 
-- text-to-SVG
-- image-to-SVG
-
-Start with:
+Text-to-SVG phase:
 
 ```text
-50% text-to-SVG
-50% image-to-SVG
+100% text-to-SVG
 ```
 
-If image vectorization quality is weaker than text generation, shift toward:
+Image-to-SVG phase, early stages:
 
 ```text
-40% text-to-SVG
-60% image-to-SVG
+90% image-to-SVG
+10% repair
+```
+
+Image-to-SVG phase, middle stages:
+
+```text
+85% image-to-SVG
+15% repair
+```
+
+Image-to-SVG phase, later diagram-heavy stages:
+
+```text
+80% image-to-SVG
+20% repair
+```
+
+Final stabilization:
+
+```text
+75-80% image-to-SVG
+20% repair
+0-5% text-to-SVG replay, only if needed
 ```
 
 ## Evaluation
@@ -247,6 +326,7 @@ Evaluate separately by dataset family and task:
 
 - text-to-SVG on each dataset
 - image-to-SVG on each dataset
+- image + corrupted SVG repair on each dataset
 - concise vs detailed prompts for `vfig_complex`
 
 Track at minimum:

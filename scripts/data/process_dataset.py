@@ -37,13 +37,14 @@ logger = logging.getLogger(__name__)
 
 LOG_EVERY = 500
 DEFAULT_CAPTION_STYLE = "concise"
-FINAL_COLUMNS = ["filename", "svg", "text", "caption_style"]
+FINAL_COLUMNS = ["filename", "svg", "text", "caption_style", "dataset"]
 CHECKPOINT_COLUMNS = [
     "row_index",
     "filename",
     "svg",
     "text",
     "caption_style",
+    "dataset",
     "keep",
     "error",
 ]
@@ -53,6 +54,7 @@ FINAL_FEATURES = Features(
         "svg": Value("string"),
         "text": Value("string"),
         "caption_style": Value("string"),
+        "dataset": Value("string"),
     }
 )
 CHECKPOINT_FEATURES = Features(
@@ -62,6 +64,7 @@ CHECKPOINT_FEATURES = Features(
         "svg": Value("string"),
         "text": Value("string"),
         "caption_style": Value("string"),
+        "dataset": Value("string"),
         "keep": Value("bool"),
         "error": Value("string"),
     }
@@ -113,6 +116,7 @@ def process_row(
             "svg": svg,
             "text": text,
             "caption_style": spec.caption_style,
+            "dataset": spec.key,
             "keep": True,
             "error": None,
         }
@@ -123,6 +127,7 @@ def process_row(
             "svg": raw_svg,
             "text": None,
             "caption_style": spec.caption_style,
+            "dataset": spec.key,
             "keep": False,
             "error": str(exc),
         }
@@ -133,6 +138,7 @@ def process_row(
             "svg": raw_svg,
             "text": None,
             "caption_style": spec.caption_style,
+            "dataset": spec.key,
             "keep": False,
             "error": str(exc),
         }
@@ -149,6 +155,7 @@ def checkpoint_row(row_index: int, row: dict[str, Any]) -> dict[str, Any]:
         "svg": row["svg"],
         "text": row["text"],
         "caption_style": row.get("caption_style", DEFAULT_CAPTION_STYLE),
+        "dataset": row["dataset"],
         "keep": row["keep"],
         "error": row["error"],
     }
@@ -289,11 +296,16 @@ def load_checkpoint_chunk(chunk_path: Path) -> Dataset:
     if not isinstance(dataset, Dataset):
         raise TypeError(f"Expected checkpoint chunk to be a Dataset: {chunk_path}")
 
+    dataset_key = chunk_path.parent.parent.name
+
     if "caption_style" not in dataset.column_names:
         dataset = dataset.add_column(
             "caption_style",
             [DEFAULT_CAPTION_STYLE] * len(dataset),
         )
+
+    if "dataset" not in dataset.column_names:
+        dataset = dataset.add_column("dataset", [dataset_key] * len(dataset))
 
     return dataset.select_columns(CHECKPOINT_COLUMNS)
 
