@@ -7,6 +7,7 @@ from scripts.data.sample_dataset import DatasetSpec
 
 IMAGE_ROOT = Path("data/images")
 OUTPUT_ROOT = Path("data/processed/datasets")
+CHECKPOINT_ROOT = Path("data/processed/checkpoints")
 
 
 def load_env_file(path: Path = Path(".env")) -> None:
@@ -34,13 +35,36 @@ def get_required_row_value(
     return row[column_name]
 
 
-def get_source_filename(row: dict[str, Any], spec: DatasetSpec) -> str:
+def get_source_filename(
+    row: dict[str, Any],
+    spec: DatasetSpec,
+    *,
+    split_name: str,
+    row_index: int,
+) -> str:
+    if spec.id_column is None:
+        return f"{spec.key}_{split_name}_{row_index:06d}.svg"
+
     return str(
         get_required_row_value(
             row,
             column_name=spec.id_column,
             dataset_key=spec.key,
             value_name="filename",
+        )
+    )
+
+
+def get_source_text(row: dict[str, Any], spec: DatasetSpec) -> str | None:
+    if spec.text_column is None:
+        return None
+
+    return str(
+        get_required_row_value(
+            row,
+            column_name=spec.text_column,
+            dataset_key=spec.key,
+            value_name="text",
         )
     )
 
@@ -73,3 +97,12 @@ def build_split_output_path(
     output_root: Path = OUTPUT_ROOT,
 ) -> Path:
     return output_root / spec.key / split_name
+
+
+def build_split_checkpoint_path(
+    *,
+    spec: DatasetSpec,
+    split_name: str,
+    checkpoint_root: Path = CHECKPOINT_ROOT,
+) -> Path:
+    return checkpoint_root / spec.key / split_name

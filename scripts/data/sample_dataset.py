@@ -3,64 +3,19 @@ import logging
 import os
 from dataclasses import dataclass
 
-from datasets import IterableDataset, IterableDatasetDict, load_dataset
+from datasets import (
+    Dataset,
+    DatasetDict,
+    IterableDataset,
+    IterableDatasetDict,
+    load_dataset,
+)
 
 from src.project_x.utils.logger import setup_logging
+from src.project_x.constants import *
 
 setup_logging()
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class DatasetSpecSplit:
-    sample_size: int
-    target_size: int
-
-
-@dataclass(frozen=True)
-class DatasetSpec:
-    key: str
-    path: str
-    config_name: str | None
-    svg_column: str
-    id_column: str | None
-    splits: dict[str, DatasetSpecSplit]
-
-
-DATASETS = {
-    "starvector": DatasetSpec(
-        key="starvector",
-        path="starvector/svg-diagrams",
-        config_name=None,
-        svg_column="Svg",
-        id_column="Filename",
-        splits={
-            "train": DatasetSpecSplit(
-                sample_size=182_000,
-                target_size=40_000,
-            ),
-            "test": DatasetSpecSplit(sample_size=474, target_size=474),
-        },
-    ),
-    "vfig_shapes": DatasetSpec(
-        key="vfig_shapes",
-        path="QijiaHe/VFIG-Data",
-        config_name="VFIG-Data-Shapes-and-Arrows",
-        svg_column="svg",
-        id_column="filename",
-        splits={
-            "train": DatasetSpecSplit(sample_size=6_545, target_size=6_545),
-        },
-    ),
-    "vfig_complex": DatasetSpec(
-        key="vfig_complex",
-        path="QijiaHe/VFIG-Data",
-        config_name="VFIG-Data-Complex-Diagrams",
-        svg_column="svg",
-        id_column="filename",
-        splits={"train": DatasetSpecSplit(sample_size=60_000, target_size=60_000)},
-    ),
-}
 
 
 def load_streaming_splits(spec: DatasetSpec) -> IterableDatasetDict:
@@ -78,6 +33,19 @@ def load_streaming_splits(spec: DatasetSpec) -> IterableDatasetDict:
     return IterableDatasetDict({"train": dataset})
 
 
+def load_local_splits(spec: DatasetSpec) -> DatasetDict:
+    token = os.environ.get("HF_TOKEN") or None
+    dataset = load_dataset(
+        spec.path,
+        spec.config_name,
+        streaming=False,
+        token=token,
+    )
+
+    if isinstance(dataset, DatasetDict):
+        return dataset
+
+
 def get_split_spec(spec: DatasetSpec, split_name: str) -> DatasetSpecSplit:
     try:
         return spec.splits[split_name]
@@ -91,34 +59,92 @@ def sample_dataset(
     seed: int,
     buffer_size: int,
     sample_size: int | None = None,
+    streaming: bool = True,
 ) -> dict[str, IterableDataset]:
+    return (
+        sample_streaming_dataset(
+            spec=spec,
+            seed=seed,
+            buffer_size=buffer_size,
+            sample_size=sample_size,
+        )
+        if streaming
+        else sample_local_dataset(
+            spec=spec,
+            seed=seed,
+            sample_size=sample_size,
+        )
+    )
 
+
+def sample_streaming_dataset(
+    spec: DatasetSpec,
+    *,
+    seed: int,
+    buffer_size: int,
+    sample_size: int | None,
+) -> dict[str, IterableDataset]:
     dataset_dict = load_streaming_splits(spec)
     sampled: dict[str, IterableDataset] = {}
 
     for split_name, spec_split in spec.splits.items():
-        if split_name not in dataset_dict:
-            available_splits = ", ".join(str(key) for key in dataset_dict)
-            raise ValueError(
-                f"{spec.key} does not contain split `{split_name}`. "
-                f"Available splits: {available_splits}"
-            )
-
+        validate_split_exists(spec, split_name, dataset_dict)
         dataset = dataset_dict[split_name]
+        split_sample_size = (
+            sample_size if sample_size is not None else spec_split.sample_size
+        )
 
-        sampled[split_name] = sample_split(
+        sampled[split_name] = sample_streaming_split(
             dataset=dataset,
             seed=seed,
             buffer_size=buffer_size,
-            sample_size=sample_size
-            if sample_size is not None
-            else spec_split.sample_size,
+            sample_size=split_sample_size,
         )
 
     return sampled
 
 
-def sample_split(
+def sample_local_dataset(
+    spec: DatasetSpec,
+    *,
+    seed: int,
+    sample_size: int | None,
+) -> dict[str, IterableDataset]:
+    dataset_dict = load_local_splits(spec)
+    sampled: dict[str, IterableDataset] = {}
+
+    for split_name, spec_split in spec.splits.items():
+        validate_split_exists(spec, split_name, dataset_dict)
+        dataset = dataset_dict[split_name]
+        split_sample_size = (
+            sample_size if sample_size is not None else spec_split.sample_size
+        )
+
+        sampled[split_name] = sample_local_split(
+            dataset=dataset,
+            seed=seed,
+            sample_size=split_sample_size,
+        )
+
+    return sampled
+
+
+def validate_split_exists(
+    spec: DatasetSpec,
+    split_name: str,
+    dataset_dict: DatasetDict | IterableDatasetDict,
+) -> None:
+    if split_name in dataset_dict:
+        return
+
+    available_splits = ", ".join(str(key) for key in dataset_dict)
+    raise ValueError(
+        f"{spec.key} does not contain split `{split_name}`. "
+        f"Available splits: {available_splits}"
+    )
+
+
+def sample_streaming_split(
     dataset: IterableDataset,
     *,
     seed: int,
@@ -135,6 +161,18 @@ def sample_split(
     dataset = dataset.shuffle(seed=seed, buffer_size=buffer_size)
     dataset = dataset.take(sample_size)
     return dataset
+
+
+def sample_local_split(
+    dataset: Dataset,
+    *,
+    seed: int,
+    sample_size: int,
+) -> IterableDataset:
+    """Sample an Arrow-backed split, then expose it as a lazy iterable."""
+    dataset = dataset.shuffle(seed=seed)
+    dataset = dataset.select(range(min(sample_size, dataset.num_rows)))
+    return dataset.to_iterable_dataset()
 
 
 def parse_args() -> argparse.Namespace:
@@ -160,6 +198,14 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Override each split's raw scan size while developing.",
     )
+    parser.add_argument(
+        "--no-streaming",
+        action="store_true",
+        help=(
+            "Download/cache raw dataset splits first, then sample selected rows "
+            "from the local Arrow cache."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -174,6 +220,7 @@ def main() -> None:
             seed=args.seed,
             buffer_size=args.buffer_size,
             sample_size=args.sample_size,
+            streaming=not args.no_streaming,
         )
 
         for split_name, dataset in sampled.items():
