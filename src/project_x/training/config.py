@@ -19,7 +19,7 @@ class TobiasTrainingConfig:
     LORA_RANK: int = 64
     LORA_ALPHA: int = 128
     LORA_DROPOUT: float = 0.1
-    LORA_TARGET_MODULES: list[str] = [
+    LORA_TARGET_MODULES: tuple[str, ...] = (
         "q_proj",
         "k_proj",
         "v_proj",
@@ -27,7 +27,7 @@ class TobiasTrainingConfig:
         "gate_proj",
         "up_proj",
         "down_proj",
-    ]
+    )
 
 
 training_config = TobiasTrainingConfig()
