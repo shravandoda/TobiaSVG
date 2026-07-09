@@ -99,6 +99,11 @@ DATASETS = {
     ),
 }
 
+DATA_PROCESSING_SEED = 42
 SPLITS = {"train": 0.80, "test": 0.10, "val": 0.10}
-
-SEED = 42
+MODEL_ID = "Qwen/Qwen3.5-4B"
+SYSTEM_MESSAGE = (
+    "You are an expert digital designer. Generate valid SVG markup that"
+    " satisfies the user's request. Return only the SVG code, with no Markdown fences,"
+    " no explanations, and no extra text."
+)

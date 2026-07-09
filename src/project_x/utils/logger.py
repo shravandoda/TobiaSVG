@@ -18,5 +18,5 @@ def setup_logging(level: int = logging.INFO) -> None:
         force=True,
     )
 
-    for logger_name in ["httpx", "httpcore", "huggingface_hub", "datasets"]:
+    for logger_name in ["httpx", "httpcore"]:
         logging.getLogger(logger_name).setLevel(logging.WARNING)
