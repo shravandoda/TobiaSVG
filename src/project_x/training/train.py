@@ -33,6 +33,8 @@ def build_peft_model():
 
     # Model Initialization
     model = get_model()
+    model.config.use_cache = False
+    model.gradient_checkpointing_enable()
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
     return model
