@@ -8,6 +8,8 @@ from typing import Any
 from datasets import Dataset, DatasetDict, Features, Value, concatenate_datasets
 from datasets import load_from_disk
 
+from src.project_x.constants import DATA_PROCESSING_SEED, SPLITS
+
 
 DEFAULT_CHECKPOINT_ROOTS = [
     Path("data/processed/checkpoints/tobiasvg_repair"),
@@ -63,10 +65,11 @@ def main() -> None:
     args = parse_args()
     checkpoint_roots = args.checkpoint_root or DEFAULT_CHECKPOINT_ROOTS
     dataset = package_checkpoints(checkpoint_roots)
-    dataset_dict = DatasetDict({"train": dataset})
+    dataset_dict = split_dataset(dataset)
     save_dataset_dict(dataset_dict, args.output_path)
     print(f"saved: {args.output_path}")
-    print(f"rows: {len(dataset):,}")
+    print(f"rows: {sum(len(split) for split in dataset_dict.values()):,}")
+    print(f"splits: { {split: len(dataset_dict[split]) for split in dataset_dict} }")
 
 
 def package_checkpoints(checkpoint_roots: list[Path]) -> Dataset:
@@ -85,6 +88,34 @@ def package_checkpoints(checkpoint_roots: list[Path]) -> Dataset:
         return Dataset.from_list([], features=FINAL_FEATURES)
 
     return concatenate_datasets(chunks).cast(FINAL_FEATURES)
+
+
+def split_dataset(dataset: Dataset) -> DatasetDict:
+    if len(dataset) == 0:
+        return DatasetDict(
+            {
+                "train": dataset,
+                "test": dataset,
+                "val": dataset,
+            }
+        )
+
+    train_and_holdout = dataset.train_test_split(
+        test_size=SPLITS["test"] + SPLITS["val"],
+        seed=DATA_PROCESSING_SEED,
+    )
+    test_and_val = train_and_holdout["test"].train_test_split(
+        test_size=SPLITS["val"] / (SPLITS["test"] + SPLITS["val"]),
+        seed=DATA_PROCESSING_SEED,
+    )
+
+    return DatasetDict(
+        {
+            "train": train_and_holdout["train"],
+            "test": test_and_val["train"],
+            "val": test_and_val["test"],
+        }
+    )
 
 
 def clean_chunk(chunk_path: Path, checkpoint_root: Path) -> Dataset:
