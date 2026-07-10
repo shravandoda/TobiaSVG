@@ -4,7 +4,7 @@ from functools import cache
 
 from transformers import AutoModelForImageTextToText, AutoProcessor, Qwen3VLProcessor
 
-from src.project_x.constants import MODEL_ID
+from project_x.constants import MODEL_ID
 
 
 @cache

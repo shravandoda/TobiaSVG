@@ -8,16 +8,29 @@ This project keeps research/reference material and generated data separate:
 Do not merge these directories. `artifacts/` answers "what did we read or inspect?"
 while `data/` answers "what did we generate locally?"
 
-Processed datasets live under:
+`scripts/data` is intentionally thin. Reusable implementation lives in
+`src/project_x/preprocessing`.
+
+Processed caption datasets live under:
 
 ```text
 data/processed/datasets/{dataset_key}/{split}
 ```
 
-Push processed datasets with:
+Repair datasets live under:
 
-```bash
-uv run python -m scripts.data.push_dataset --repo-id USER_OR_ORG/REPO --dry-run
+```text
+data/processed/repair_datasets/{dataset_key}
 ```
 
-Remove `--dry-run` when the split summary looks correct.
+Common commands:
+
+```bash
+uv run python -m scripts.data.sample_dataset --dataset starvector_diagrams --sample-size 10
+uv run python -m scripts.data.process_dataset --dataset starvector_diagrams --sample-size 10
+uv run python -m scripts.data.build_repair_dataset --sample-size 100 --workers 8
+uv run python -m scripts.data.build_repair_dataset --package-only
+uv run python -m scripts.data.analyze_svg_stats
+uv run python -m scripts.data.push_dataset --repo-id USER_OR_ORG/REPO
+uv run python -m scripts.data.push_dataset --repo-id USER_OR_ORG/REPAIR_REPO --dataset-path data/processed/repair_datasets/tobiasvg_repair
+```

@@ -26,6 +26,13 @@ repos:
         pass_filenames: false
         types: [python]
 
+      - id: pytest
+        name: pytest
+        entry: uv run pytest
+        language: system
+        pass_filenames: false
+        types: [python]
+
       - id: conventional-commit
         name: conventional commit message
         entry: uv run cz check --commit-msg-file

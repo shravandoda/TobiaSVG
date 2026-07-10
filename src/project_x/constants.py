@@ -7,6 +7,10 @@ load_dotenv()
 
 HF_TOKEN = os.environ.get("HF_TOKEN")
 
+WANDB_API_KEY = os.environ.get("WANDB_API_KEY")
+WANDB_PROJECT_NAME = "project_x"
+WANDB_ENTITY = "shravandoda-georgia-institute-of-technology"
+
 
 @dataclass(frozen=True)
 class DatasetSpecSplit:
@@ -102,6 +106,7 @@ DATASETS = {
 DATA_PROCESSING_SEED = 42
 SPLITS = {"train": 0.80, "test": 0.10, "val": 0.10}
 MODEL_ID = "Qwen/Qwen3.5-4B"
+MAX_SEQUENCE_LENGTH = 8192
 SYSTEM_MESSAGE = (
     "You are an expert digital designer. Generate valid SVG markup that"
     " satisfies the user's request. Return only the SVG code, with no Markdown fences,"

@@ -8,7 +8,7 @@ from typing import Any
 from datasets import Dataset, DatasetDict, Features, Value, concatenate_datasets
 from datasets import load_from_disk
 
-from src.project_x.constants import DATA_PROCESSING_SEED, SPLITS
+from project_x.constants import DATA_PROCESSING_SEED, SPLITS
 
 
 DEFAULT_CHECKPOINT_ROOTS = [
@@ -120,6 +120,9 @@ def split_dataset(dataset: Dataset) -> DatasetDict:
 
 def clean_chunk(chunk_path: Path, checkpoint_root: Path) -> Dataset:
     dataset = load_from_disk(str(chunk_path))
+    if not isinstance(dataset, Dataset):
+        raise TypeError(f"Expected a Dataset at {chunk_path}")
+
     is_truncated = is_truncation_chunk(chunk_path, checkpoint_root)
 
     return dataset.map(

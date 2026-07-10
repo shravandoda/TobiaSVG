@@ -2,7 +2,7 @@
 
 from PIL.Image import Image
 
-from src.project_x.constants import SYSTEM_MESSAGE
+from project_x.constants import SYSTEM_MESSAGE
 
 
 def get_text2svg_prompt(text: str):

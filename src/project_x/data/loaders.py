@@ -1,29 +1,34 @@
-from datasets import DatasetDict
+from collections.abc import Callable
+from logging import getLogger
+from typing import cast
+
+from datasets import Dataset, DatasetDict
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset as TorchDataset
 
-from src.project_x.constants import DATA_PROCESSING_SEED, SPLITS
-from src.project_x.data.collators import (
+from project_x.constants import MAX_SEQUENCE_LENGTH
+from project_x.data.collators import (
     image2svg_collator,
+    image2svg_sequence_length,
     repair_collator,
+    repair_sequence_length,
     text2svg_collator,
+    text2svg_sequence_length,
 )
-from src.project_x.data.datasets import (
-    ImageToSVGDataset,
-    SVGRepairDataset,
-    TextToSVGDataset,
-)
+
+logger = getLogger(__name__)
+REQUIRED_SPLITS = {"train", "test", "val"}
 
 
 def _build_dataloader(
-    dataset: TorchDataset,
+    dataset: Dataset,
     collate_fn,
     batch_size: int,
     num_workers: int,
     shuffle: bool = False,
 ) -> DataLoader:
     return DataLoader(
-        dataset=dataset,
+        dataset=cast(TorchDataset, dataset),
         batch_size=batch_size,
         shuffle=shuffle,
         collate_fn=collate_fn,
@@ -33,26 +38,25 @@ def _build_dataloader(
 
 def _build_split_dataloaders(
     dataset: DatasetDict,
-    dataset_class,
     collate_fn,
     batch_size: int,
     num_workers: int,
 ):
     train_loader = _build_dataloader(
-        dataset_class(dataset["train"]),
+        dataset["train"],
         collate_fn=collate_fn,
         batch_size=batch_size,
         num_workers=num_workers,
         shuffle=True,
     )
     test_loader = _build_dataloader(
-        dataset_class(dataset["test"]),
+        dataset["test"],
         collate_fn=collate_fn,
         batch_size=batch_size,
         num_workers=num_workers,
     )
     val_loader = _build_dataloader(
-        dataset_class(dataset["val"]),
+        dataset["val"],
         collate_fn=collate_fn,
         batch_size=batch_size,
         num_workers=num_workers,
@@ -61,26 +65,51 @@ def _build_split_dataloaders(
     return train_loader, test_loader, val_loader
 
 
-def _with_train_test_val_splits(dataset: DatasetDict) -> DatasetDict:
-    if {"train", "test", "val"}.issubset(dataset):
-        return dataset
+def _add_sequence_length(
+    row: dict,
+    sequence_length_fn: Callable[[dict], int],
+) -> dict[str, int]:
+    return {"sequence_length": sequence_length_fn(row)}
 
-    train_and_holdout = dataset["train"].train_test_split(
-        test_size=SPLITS["test"] + SPLITS["val"],
-        seed=DATA_PROCESSING_SEED,
+
+def _within_sequence_limit(sequence_length: int) -> bool:
+    return sequence_length <= MAX_SEQUENCE_LENGTH
+
+
+def _prepare_task_dataset(
+    dataset: DatasetDict,
+    sequence_length_fn: Callable[[dict], int],
+    columns: tuple[str, ...],
+    task_name: str,
+) -> DatasetDict:
+    missing_splits = REQUIRED_SPLITS.difference(dataset)
+    if missing_splits:
+        missing = ", ".join(sorted(missing_splits))
+        raise ValueError(f"Dataset is missing required splits: {missing}")
+
+    original_sizes = {split_name: len(split) for split_name, split in dataset.items()}
+    with_lengths = dataset.map(
+        _add_sequence_length,
+        fn_kwargs={"sequence_length_fn": sequence_length_fn},
+        desc=f"Measuring {task_name} sequence lengths",
     )
-    test_and_val = train_and_holdout["test"].train_test_split(
-        test_size=SPLITS["val"] / (SPLITS["test"] + SPLITS["val"]),
-        seed=DATA_PROCESSING_SEED,
+    filtered = with_lengths.filter(
+        _within_sequence_limit,
+        input_columns=["sequence_length"],
+        desc=f"Filtering {task_name} sequences",
     )
 
-    return DatasetDict(
-        {
-            "train": train_and_holdout["train"],
-            "test": test_and_val["train"],
-            "val": test_and_val["test"],
-        }
-    )
+    for split_name, split in filtered.items():
+        logger.info(
+            "prepared %s/%s: kept=%s removed=%s max_sequence_length=%s",
+            task_name,
+            split_name,
+            len(split),
+            original_sizes[split_name] - len(split),
+            MAX_SEQUENCE_LENGTH,
+        )
+
+    return filtered.select_columns(list(columns))
 
 
 def get_text2svg_dataloader(
@@ -88,12 +117,17 @@ def get_text2svg_dataloader(
     batch_size: int,
     num_workers: int = 0,
 ):
+    dataset = _prepare_task_dataset(
+        dataset,
+        sequence_length_fn=text2svg_sequence_length,
+        columns=("text", "svg"),
+        task_name="text2svg",
+    )
     return _build_split_dataloaders(
         dataset,
-        TextToSVGDataset,
         text2svg_collator,
-        batch_size,
-        num_workers,
+        batch_size=batch_size,
+        num_workers=num_workers,
     )
 
 
@@ -102,12 +136,17 @@ def get_img2svg_dataloader(
     batch_size: int,
     num_workers: int = 0,
 ):
+    dataset = _prepare_task_dataset(
+        dataset,
+        sequence_length_fn=image2svg_sequence_length,
+        columns=("svg",),
+        task_name="image2svg",
+    )
     return _build_split_dataloaders(
         dataset,
-        ImageToSVGDataset,
         image2svg_collator,
-        batch_size,
-        num_workers,
+        batch_size=batch_size,
+        num_workers=num_workers,
     )
 
 
@@ -116,12 +155,15 @@ def get_repair_dataloader(
     batch_size: int,
     num_workers: int = 0,
 ):
-    dataset = _with_train_test_val_splits(dataset)
-
+    dataset = _prepare_task_dataset(
+        dataset,
+        sequence_length_fn=repair_sequence_length,
+        columns=("svg", "corrupted_svg"),
+        task_name="repair",
+    )
     return _build_split_dataloaders(
         dataset,
-        SVGRepairDataset,
         repair_collator,
-        batch_size,
-        num_workers,
+        batch_size=batch_size,
+        num_workers=num_workers,
     )

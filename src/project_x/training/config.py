@@ -11,9 +11,8 @@ class TobiasTrainingConfig:
     LR: float = 2e-4  # Standard for LoRA
     WEIGHT_DECAY: float = 0.01
     WARMUP_STEPS: int = 10
-    TOTAL_STEPS: int = 10
     MAX_TRAIN_STEPS: int = 1
-    BATCH_SIZE: int = GRADIENT_ACCUMULATION_STEPS * MICRO_BATCH_SIZE
+    LOG_EVERY_STEPS: int = 10
 
     # LORA
     LORA_RANK: int = 64

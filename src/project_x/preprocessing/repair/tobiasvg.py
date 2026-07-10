@@ -5,15 +5,22 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from datasets import Dataset, DatasetDict, concatenate_datasets, load_dataset, load_from_disk
+from datasets import (
+    Dataset,
+    DatasetDict,
+    concatenate_datasets,
+    load_dataset,
+    load_from_disk,
+)
 
-from scripts.data.build_repair_dataset import (
+from project_x.preprocessing.repair.generate import (
     CORRUPTIONS,
     REPAIR_FEATURES,
     build_repair_rows,
     save_repair_dataset,
 )
-from src.project_x.constants import HF_TOKEN, SEED
+from project_x.preprocessing.repair import package as repair_package
+from project_x.constants import DATA_PROCESSING_SEED, HF_TOKEN
 
 SOURCE_REPO_ID = "shravandoda/TobiaSVG"
 DEFAULT_OUTPUT_PATH = Path("data/processed/repair_datasets/tobiasvg_repair")
@@ -50,7 +57,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-root", type=Path, default=DEFAULT_CHECKPOINT_ROOT)
     parser.add_argument("--chunk-size", type=int, default=1000)
     parser.add_argument("--workers", type=int, default=1)
-    parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--seed", type=int, default=DATA_PROCESSING_SEED)
     parser.add_argument(
         "--start-index",
         type=int,
@@ -65,6 +72,21 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--sample-size", type=int, default=None)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument(
+        "--package-only",
+        action="store_true",
+        help="Only package existing repair checkpoints into the final DatasetDict.",
+    )
+    parser.add_argument(
+        "--package-checkpoint-root",
+        type=Path,
+        action="append",
+        default=None,
+        help=(
+            "Checkpoint root to package. Pass multiple times, or omit to use "
+            "the known generated repair roots."
+        ),
+    )
     parser.add_argument(
         "--truncation-fraction",
         type=float,
@@ -91,13 +113,17 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.package_only:
+        package_existing_checkpoints(args)
+        return
+
     source_dataset_keys = args.source_dataset or DEFAULT_SOURCE_DATASETS
     source = load_dataset(args.repo_id, token=HF_TOKEN)
     if not isinstance(source, DatasetDict):
         source = DatasetDict({"train": source})
 
-    selected_splits = args.split or list(source)
-    outputs: dict[str, Dataset] = {}
+    selected_splits = args.split or [str(split_name) for split_name in source]
+    output = DatasetDict()
 
     for split_name in selected_splits:
         if split_name not in source:
@@ -129,11 +155,22 @@ def main() -> None:
             row_start_offset=row_start_offset,
             args=args,
         )
-        outputs[split_name] = combine_split_checkpoints(checkpoint_split_root)
+        output[split_name] = combine_split_checkpoints(checkpoint_split_root)
 
-    output = DatasetDict(outputs)
     save_dataset_dict(output, args.output_path)
     print(f"saved: {args.output_path}")
+
+
+def package_existing_checkpoints(args: argparse.Namespace) -> None:
+    checkpoint_roots = (
+        args.package_checkpoint_root or repair_package.DEFAULT_CHECKPOINT_ROOTS
+    )
+    dataset = repair_package.package_checkpoints(checkpoint_roots)
+    dataset_dict = repair_package.split_dataset(dataset)
+    repair_package.save_dataset_dict(dataset_dict, args.output_path)
+    print(f"saved: {args.output_path}")
+    print(f"rows: {sum(len(split) for split in dataset_dict.values()):,}")
+    print(f"splits: { {split: len(dataset_dict[split]) for split in dataset_dict} }")
 
 
 def select_range(
@@ -182,7 +219,7 @@ def build_split_checkpoints(
             if chunk_path.exists():
                 if args.resume:
                     print(f"resume: {chunk_path}")
-                    repair_chunk = load_from_disk(str(chunk_path))
+                    repair_chunk = load_checkpoint_dataset(chunk_path)
                     save_truncation_checkpoint(
                         repair_chunk,
                         checkpoint_path=truncation_path,
@@ -333,17 +370,24 @@ def combine_split_checkpoints(checkpoint_split_root: Path) -> Dataset:
     for level in REPAIR_LEVELS:
         level_root = checkpoint_split_root / level
         for chunk_path in sorted(level_root.glob("chunk_*")):
-            chunks.append(load_from_disk(str(chunk_path)))
+            chunks.append(load_checkpoint_dataset(chunk_path))
 
     for level in REPAIR_LEVELS:
         level_root = checkpoint_split_root / "truncation" / level
         for chunk_path in sorted(level_root.glob("chunk_*")):
-            chunks.append(load_from_disk(str(chunk_path)))
+            chunks.append(load_checkpoint_dataset(chunk_path))
 
     if not chunks:
         return Dataset.from_list([], features=REPAIR_FEATURES)
 
     return concatenate_datasets(chunks)
+
+
+def load_checkpoint_dataset(checkpoint_path: Path) -> Dataset:
+    dataset = load_from_disk(str(checkpoint_path))
+    if not isinstance(dataset, Dataset):
+        raise TypeError(f"Expected a Dataset at {checkpoint_path}")
+    return dataset
 
 
 def save_dataset_dict(dataset: DatasetDict, output_path: Path) -> None:

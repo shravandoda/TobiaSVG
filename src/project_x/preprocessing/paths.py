@@ -3,7 +3,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from scripts.data.sample_dataset import DatasetSpec
+from project_x.constants import DatasetSpec
 
 IMAGE_ROOT = Path("data/images")
 OUTPUT_ROOT = Path("data/processed/datasets")
