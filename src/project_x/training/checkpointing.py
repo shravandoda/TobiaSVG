@@ -5,6 +5,7 @@ from pathlib import Path
 
 from accelerate import Accelerator
 from accelerate.checkpointing import save_accelerator_state
+from huggingface_hub import HfApi
 from peft import load_peft_weights, set_peft_model_state_dict
 
 from project_x.training.config import training_config
@@ -60,14 +61,14 @@ def save_checkpoint(
     model,
     project_dir: Path,
     completed_steps: int,
-) -> None:
+) -> Path:
     checkpoint_root = project_dir / "checkpoints"
     checkpoint_dir = checkpoint_root / f"{CHECKPOINT_PREFIX}{completed_steps:06d}"
     incomplete_dir = checkpoint_root / f".{checkpoint_dir.name}.incomplete"
 
     if checkpoint_dir.exists():
         accelerator.print(f"checkpoint already exists: {checkpoint_dir}")
-        return
+        return checkpoint_dir
 
     if accelerator.is_main_process:
         if incomplete_dir.exists():
@@ -99,21 +100,53 @@ def save_checkpoint(
         incomplete_dir.rename(checkpoint_dir)
         checkpoints = sort_checkpoints(project_dir)
         to_delete = checkpoints[training_config.KEEP_LAST_CHECKPOINTS :]
-        for _, checkpoint_dir in to_delete:
-            shutil.rmtree(checkpoint_dir)
+        for _, old_checkpoint_dir in to_delete:
+            shutil.rmtree(old_checkpoint_dir)
     accelerator.wait_for_everyone()
     accelerator.print(f"saved checkpoint: {checkpoint_dir}")
+    return checkpoint_dir
 
 
 def save_final_adapter(
     accelerator: Accelerator,
     model,
     project_dir: Path,
-) -> None:
+) -> Path:
+    adapter_dir = project_dir / "final_adapter"
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         accelerator.unwrap_model(model).save_pretrained(
-            project_dir / "final_adapter",
+            adapter_dir,
             safe_serialization=True,
         )
+    accelerator.wait_for_everyone()
+    return adapter_dir
+
+
+def push_adapter_to_hub(
+    accelerator: Accelerator,
+    adapter_dir: Path,
+    repo_id: str,
+    commit_message: str,
+) -> None:
+    """Upload adapter weights without interrupting training on Hub failures."""
+    accelerator.wait_for_everyone()
+    if accelerator.is_main_process:
+        try:
+            api = HfApi()
+            api.create_repo(
+                repo_id=repo_id,
+                repo_type="model",
+                private=True,
+                exist_ok=True,
+            )
+            api.upload_folder(
+                repo_id=repo_id,
+                repo_type="model",
+                folder_path=adapter_dir,
+                commit_message=commit_message,
+            )
+            accelerator.print(f"pushed adapter to Hub: {repo_id}")
+        except Exception as error:
+            accelerator.print(f"Hub push failed: {error}")
     accelerator.wait_for_everyone()

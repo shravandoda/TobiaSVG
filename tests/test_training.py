@@ -3,7 +3,11 @@ from types import SimpleNamespace
 import torch
 
 from project_x.training import checkpointing
-from project_x.training.checkpointing import save_checkpoint, sort_checkpoints
+from project_x.training.checkpointing import (
+    push_adapter_to_hub,
+    save_checkpoint,
+    sort_checkpoints,
+)
 from project_x.training.train import repeat_dataloader, validate
 
 
@@ -145,3 +149,36 @@ def test_save_checkpoint_skips_frozen_model_state(tmp_path, monkeypatch):
     assert saved_state["model_states"] == []
     assert saved_state["optimizers"] == ["optimizer"]
     assert not (tmp_path / "checkpoints" / ".checkpoint_000010.incomplete").exists()
+
+
+def test_push_adapter_to_hub_uploads_model_repo(tmp_path, monkeypatch):
+    calls = {}
+
+    class FakeApi:
+        def create_repo(self, **kwargs):
+            calls["create_repo"] = kwargs
+
+        def upload_folder(self, **kwargs):
+            calls["upload_folder"] = kwargs
+
+    monkeypatch.setattr(checkpointing, "HfApi", FakeApi)
+
+    push_adapter_to_hub(
+        CheckpointAccelerator(),
+        tmp_path,
+        "user/model",
+        "Training checkpoint at step 5000",
+    )
+
+    assert calls["create_repo"] == {
+        "repo_id": "user/model",
+        "repo_type": "model",
+        "private": True,
+        "exist_ok": True,
+    }
+    assert calls["upload_folder"] == {
+        "repo_id": "user/model",
+        "repo_type": "model",
+        "folder_path": tmp_path,
+        "commit_message": "Training checkpoint at step 5000",
+    }

@@ -21,6 +21,7 @@ from project_x.data.loaders import (
 )
 from project_x.modeling.loading import get_model
 from project_x.training.checkpointing import (
+    push_adapter_to_hub,
     register_peft_load_hook,
     resume_latest_checkpoint,
     save_checkpoint,
@@ -226,7 +227,22 @@ def train(
             )
 
         if completed_steps % training_config.SAVE_EVERY_STEPS == 0:
-            save_checkpoint(accelerator, model, project_dir, completed_steps)
+            checkpoint_dir = save_checkpoint(
+                accelerator,
+                model,
+                project_dir,
+                completed_steps,
+            )
+            if (
+                training_config.HUB_REPO_ID
+                and completed_steps % training_config.PUSH_TO_HUB_EVERY_STEPS == 0
+            ):
+                push_adapter_to_hub(
+                    accelerator,
+                    checkpoint_dir / "adapter",
+                    training_config.HUB_REPO_ID,
+                    commit_message=f"Training checkpoint at step {completed_steps}",
+                )
 
 
 def main():
@@ -304,7 +320,14 @@ def main():
         training_config.MAX_TRAIN_STEPS,
         project_dir,
     )
-    save_final_adapter(accelerator, model, project_dir)
+    final_adapter_dir = save_final_adapter(accelerator, model, project_dir)
+    if training_config.HUB_REPO_ID:
+        push_adapter_to_hub(
+            accelerator,
+            final_adapter_dir,
+            training_config.HUB_REPO_ID,
+            commit_message="Final adapter",
+        )
     accelerator.end_training()
 
 

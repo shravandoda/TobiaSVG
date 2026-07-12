@@ -41,5 +41,9 @@ class TobiasTrainingConfig:
     SAVE_EVERY_STEPS: int = 500
     KEEP_LAST_CHECKPOINTS: int = 3
 
+    # Hugging Face Hub backup
+    HUB_REPO_ID: str | None = os.environ.get("HF_MODEL_REPO_ID")
+    PUSH_TO_HUB_EVERY_STEPS: int = 5_000
+
 
 training_config = TobiasTrainingConfig()
