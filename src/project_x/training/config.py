@@ -11,8 +11,8 @@ class TobiasTrainingConfig:
     # Core training config
     LR: float = 2e-4  # Standard for LoRA
     WEIGHT_DECAY: float = 0.01
-    WARMUP_STEPS: int = 10
-    MAX_TRAIN_STEPS: int = 1
+    WARMUP_STEPS: int = 1_000
+    MAX_TRAIN_STEPS: int = 36_000
     LOG_EVERY_STEPS: int = 10
     VALIDATE_EVERY_STEPS: int = 500
     MAX_VALIDATION_BATCHES: int = 50
