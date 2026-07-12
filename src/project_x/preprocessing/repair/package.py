@@ -1,14 +1,22 @@
 """Package TobiaSVG repair checkpoints into a clean DatasetDict."""
 
 import argparse
+import hashlib
 import shutil
 from pathlib import Path
 from typing import Any
 
-from datasets import Dataset, DatasetDict, Features, Value, concatenate_datasets
-from datasets import load_from_disk
+from datasets import (
+    Dataset,
+    DatasetDict,
+    Features,
+    Value,
+    concatenate_datasets,
+    load_dataset,
+    load_from_disk,
+)
 
-from project_x.constants import DATA_PROCESSING_SEED, SPLITS
+from project_x.constants import DATA_PROCESSING_SEED, HF_TOKEN, SPLITS
 
 
 DEFAULT_CHECKPOINT_ROOTS = [
@@ -17,6 +25,8 @@ DEFAULT_CHECKPOINT_ROOTS = [
     Path("data/processed/checkpoints/tobiasvg_repair_vfig_shapes"),
 ]
 DEFAULT_OUTPUT_PATH = Path("data/processed/repair_datasets/tobiasvg_repair")
+SOURCE_REPO_ID = "shravandoda/TobiaSVG"
+SPLIT_PRIORITY = ("train", "test", "val")
 
 FINAL_COLUMNS = [
     "filename",
@@ -65,7 +75,10 @@ def main() -> None:
     args = parse_args()
     checkpoint_roots = args.checkpoint_root or DEFAULT_CHECKPOINT_ROOTS
     dataset = package_checkpoints(checkpoint_roots)
-    dataset_dict = split_dataset(dataset)
+    source_dataset = load_dataset(SOURCE_REPO_ID, token=HF_TOKEN)
+    if not isinstance(source_dataset, DatasetDict):
+        source_dataset = DatasetDict({"train": source_dataset})
+    dataset_dict = split_dataset(dataset, source_dataset)
     save_dataset_dict(dataset_dict, args.output_path)
     print(f"saved: {args.output_path}")
     print(f"rows: {sum(len(split) for split in dataset_dict.values()):,}")
@@ -90,7 +103,52 @@ def package_checkpoints(checkpoint_roots: list[Path]) -> Dataset:
     return concatenate_datasets(chunks).cast(FINAL_FEATURES)
 
 
-def split_dataset(dataset: Dataset) -> DatasetDict:
+def svg_digest(svg: str) -> str:
+    return hashlib.sha256(svg.encode("utf-8")).hexdigest()
+
+
+def build_source_split_lookup(source_dataset: DatasetDict) -> dict[str, str]:
+    """Map each clean SVG to one canonical source split."""
+    lookup = {}
+    for split_name in SPLIT_PRIORITY:
+        if split_name not in source_dataset:
+            continue
+        for svg in source_dataset[split_name]["svg"]:
+            lookup.setdefault(svg_digest(svg), split_name)
+    return lookup
+
+
+def split_source_dataset(dataset: Dataset) -> DatasetDict:
+    """Assign identical SVGs to one deterministic 80/10/10 split."""
+    indices = {split_name: [] for split_name in SPLIT_PRIORITY}
+    train_threshold = SPLITS["train"]
+    test_threshold = train_threshold + SPLITS["test"]
+
+    for index, svg in enumerate(dataset["svg"]):
+        digest = svg_digest(svg)
+        seeded_digest = hashlib.sha256(
+            f"{DATA_PROCESSING_SEED}:{digest}".encode()
+        ).digest()
+        fraction = int.from_bytes(seeded_digest[:8], "big") / 2**64
+
+        if fraction < train_threshold:
+            split_name = "train"
+        elif fraction < test_threshold:
+            split_name = "test"
+        else:
+            split_name = "val"
+        indices[split_name].append(index)
+
+    return DatasetDict(
+        {
+            split_name: dataset.select(split_indices).shuffle(seed=DATA_PROCESSING_SEED)
+            for split_name, split_indices in indices.items()
+        }
+    )
+
+
+def split_dataset(dataset: Dataset, source_dataset: DatasetDict) -> DatasetDict:
+    """Keep every repair variant in the clean SVG's canonical source split."""
     if len(dataset) == 0:
         return DatasetDict(
             {
@@ -100,20 +158,27 @@ def split_dataset(dataset: Dataset) -> DatasetDict:
             }
         )
 
-    train_and_holdout = dataset.train_test_split(
-        test_size=SPLITS["test"] + SPLITS["val"],
-        seed=DATA_PROCESSING_SEED,
-    )
-    test_and_val = train_and_holdout["test"].train_test_split(
-        test_size=SPLITS["val"] / (SPLITS["test"] + SPLITS["val"]),
-        seed=DATA_PROCESSING_SEED,
-    )
+    source_split_by_svg = build_source_split_lookup(source_dataset)
+    indices = {split_name: [] for split_name in SPLIT_PRIORITY}
+    missing_digests = set()
+
+    for index, svg in enumerate(dataset["svg"]):
+        digest = svg_digest(svg)
+        split_name = source_split_by_svg.get(digest)
+        if split_name is None:
+            missing_digests.add(digest)
+            continue
+        indices[split_name].append(index)
+
+    if missing_digests:
+        raise ValueError(
+            f"{len(missing_digests)} repair targets are missing from {SOURCE_REPO_ID}"
+        )
 
     return DatasetDict(
         {
-            "train": train_and_holdout["train"],
-            "test": test_and_val["train"],
-            "val": test_and_val["test"],
+            split_name: dataset.select(split_indices).shuffle(seed=DATA_PROCESSING_SEED)
+            for split_name, split_indices in indices.items()
         }
     )
 

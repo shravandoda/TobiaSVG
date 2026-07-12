@@ -166,7 +166,10 @@ def package_existing_checkpoints(args: argparse.Namespace) -> None:
         args.package_checkpoint_root or repair_package.DEFAULT_CHECKPOINT_ROOTS
     )
     dataset = repair_package.package_checkpoints(checkpoint_roots)
-    dataset_dict = repair_package.split_dataset(dataset)
+    source_dataset = load_dataset(args.repo_id, token=HF_TOKEN)
+    if not isinstance(source_dataset, DatasetDict):
+        source_dataset = DatasetDict({"train": source_dataset})
+    dataset_dict = repair_package.split_dataset(dataset, source_dataset)
     repair_package.save_dataset_dict(dataset_dict, args.output_path)
     print(f"saved: {args.output_path}")
     print(f"rows: {sum(len(split) for split in dataset_dict.values()):,}")
