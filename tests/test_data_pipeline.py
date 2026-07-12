@@ -27,7 +27,7 @@ def build_splits() -> DatasetDict:
         {
             "text": ["short", "long"],
             "svg": ["<svg/>", "<svg/>"],
-            "measured_length": [100, 9_000],
+            "measured_length": [100, 13_000],
             "unused": [1, 2],
         }
     )

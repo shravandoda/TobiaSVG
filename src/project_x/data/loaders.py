@@ -114,8 +114,11 @@ def _add_sequence_length(
     return {"sequence_length": sequence_length_fn(row)}
 
 
-def _within_sequence_limit(sequence_length: int) -> bool:
-    return sequence_length <= MAX_SEQUENCE_LENGTH
+def _within_sequence_limit(
+    sequence_length: int,
+    max_sequence_length: int,
+) -> bool:
+    return sequence_length <= max_sequence_length
 
 
 def _prepare_task_dataset(
@@ -140,6 +143,7 @@ def _prepare_task_dataset(
     filtered = with_lengths.filter(
         _within_sequence_limit,
         input_columns=["sequence_length"],
+        fn_kwargs={"max_sequence_length": MAX_SEQUENCE_LENGTH},
         num_proc=num_proc,
         desc=f"Filtering {task_name} sequences",
     )
