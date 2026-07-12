@@ -4,7 +4,7 @@ import torch
 
 from project_x.training import checkpointing
 from project_x.training.checkpointing import (
-    push_adapter_to_hub,
+    push_folder_to_hub,
     save_checkpoint,
     sort_checkpoints,
 )
@@ -151,7 +151,7 @@ def test_save_checkpoint_skips_frozen_model_state(tmp_path, monkeypatch):
     assert not (tmp_path / "checkpoints" / ".checkpoint_000010.incomplete").exists()
 
 
-def test_push_adapter_to_hub_uploads_model_repo(tmp_path, monkeypatch):
+def test_push_folder_to_hub_uploads_model_repo(tmp_path, monkeypatch):
     calls = {}
 
     class FakeApi:
@@ -163,10 +163,11 @@ def test_push_adapter_to_hub_uploads_model_repo(tmp_path, monkeypatch):
 
     monkeypatch.setattr(checkpointing, "HfApi", FakeApi)
 
-    push_adapter_to_hub(
+    push_folder_to_hub(
         CheckpointAccelerator(),
         tmp_path,
         "user/model",
+        "checkpoints/checkpoint_005000",
         "Training checkpoint at step 5000",
     )
 
@@ -180,5 +181,6 @@ def test_push_adapter_to_hub_uploads_model_repo(tmp_path, monkeypatch):
         "repo_id": "user/model",
         "repo_type": "model",
         "folder_path": tmp_path,
+        "path_in_repo": "checkpoints/checkpoint_005000",
         "commit_message": "Training checkpoint at step 5000",
     }

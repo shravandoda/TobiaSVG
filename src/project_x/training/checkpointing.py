@@ -123,13 +123,14 @@ def save_final_adapter(
     return adapter_dir
 
 
-def push_adapter_to_hub(
+def push_folder_to_hub(
     accelerator: Accelerator,
-    adapter_dir: Path,
+    folder: Path,
     repo_id: str,
+    path_in_repo: str,
     commit_message: str,
 ) -> None:
-    """Upload adapter weights without interrupting training on Hub failures."""
+    """Upload training artifacts without interrupting training on Hub failures."""
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         try:
@@ -143,10 +144,11 @@ def push_adapter_to_hub(
             api.upload_folder(
                 repo_id=repo_id,
                 repo_type="model",
-                folder_path=adapter_dir,
+                folder_path=folder,
+                path_in_repo=path_in_repo,
                 commit_message=commit_message,
             )
-            accelerator.print(f"pushed adapter to Hub: {repo_id}")
+            accelerator.print(f"pushed training artifacts to Hub: {repo_id}")
         except Exception as error:
             accelerator.print(f"Hub push failed: {error}")
     accelerator.wait_for_everyone()
