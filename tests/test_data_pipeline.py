@@ -2,7 +2,10 @@ from datasets import Dataset, DatasetDict
 import torch
 
 from project_x.data.collators import _build_training_batch
-from project_x.data.loaders import _prepare_task_dataset
+from project_x.data.loaders import (
+    _prepare_task_dataset,
+    split_generation_train_rows,
+)
 
 
 class FakeTokenizer:
@@ -62,6 +65,29 @@ def test_prepare_task_dataset_requires_all_splits():
         assert str(error) == "Dataset is missing required splits: test, val"
     else:
         raise AssertionError("Missing dataset splits were accepted")
+
+
+def test_split_generation_train_rows_is_disjoint_and_source_balanced():
+    train = Dataset.from_dict(
+        {
+            "row_id": list(range(8)),
+            "dataset": ["shapes"] * 4 + ["diagrams"] * 4,
+        }
+    )
+    evaluation = Dataset.from_dict({"row_id": [8], "dataset": ["evaluation"]})
+    dataset = DatasetDict({"train": train, "test": evaluation, "val": evaluation})
+
+    text_dataset, image_dataset = split_generation_train_rows(dataset, seed=7)
+
+    text_ids = set(text_dataset["train"]["row_id"])
+    image_ids = set(image_dataset["train"]["row_id"])
+    assert len(text_ids) == len(image_ids) == 4
+    assert text_ids.isdisjoint(image_ids)
+    assert text_ids | image_ids == set(range(8))
+    assert text_dataset["train"]["dataset"].count("shapes") == 2
+    assert image_dataset["train"]["dataset"].count("shapes") == 2
+    assert text_dataset["test"][:] == evaluation[:]
+    assert image_dataset["val"][:] == evaluation[:]
 
 
 def test_build_training_batch_masks_prompts_and_pads_targets():

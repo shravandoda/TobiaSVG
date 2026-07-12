@@ -13,6 +13,9 @@ class TobiasTrainingConfig:
     WARMUP_STEPS: int = 10
     MAX_TRAIN_STEPS: int = 1
     LOG_EVERY_STEPS: int = 10
+    VALIDATE_EVERY_STEPS: int = 500
+    MAX_VALIDATION_BATCHES: int = 50
+    SEED: int = 42
 
     # LORA
     LORA_RANK: int = 64
@@ -27,6 +30,11 @@ class TobiasTrainingConfig:
         "up_proj",
         "down_proj",
     )
+
+    # Checkpointing
+    PROJECT_DIR: str = "./artifacts/training/tobias-svg-qwen3.5-4b-lora"
+    SAVE_EVERY_STEPS: int = 500
+    KEEP_LAST_CHECKPOINTS: int = 3
 
 
 training_config = TobiasTrainingConfig()

@@ -6,7 +6,7 @@ from datasets import Dataset, DatasetDict
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset as TorchDataset
 
-from project_x.constants import MAX_SEQUENCE_LENGTH
+from project_x.constants import DATA_PROCESSING_SEED, MAX_SEQUENCE_LENGTH
 from project_x.data.collators import (
     image2svg_collator,
     image2svg_sequence_length,
@@ -18,6 +18,48 @@ from project_x.data.collators import (
 
 logger = getLogger(__name__)
 REQUIRED_SPLITS = {"train", "test", "val"}
+DATASET_COLUMN = "dataset"
+STRATIFY_COLUMN = "_dataset_class"
+
+
+def split_generation_train_rows(
+    dataset: DatasetDict,
+    seed: int = DATA_PROCESSING_SEED,
+) -> tuple[DatasetDict, DatasetDict]:
+    """Assign disjoint, source-balanced training rows to text and image tasks."""
+    missing_splits = REQUIRED_SPLITS.difference(dataset)
+    if missing_splits:
+        missing = ", ".join(sorted(missing_splits))
+        raise ValueError(f"Dataset is missing required splits: {missing}")
+
+    train = dataset["train"]
+    if DATASET_COLUMN not in train.column_names:
+        raise ValueError(
+            f"Training split is missing the stratification column: {DATASET_COLUMN}"
+        )
+
+    train = train.add_column(STRATIFY_COLUMN, train[DATASET_COLUMN])
+    train = train.class_encode_column(STRATIFY_COLUMN)
+    task_splits = train.train_test_split(
+        test_size=0.5,
+        seed=seed,
+        stratify_by_column=STRATIFY_COLUMN,
+    )
+
+    text_train = task_splits["train"].remove_columns(STRATIFY_COLUMN)
+    image_train = task_splits["test"].remove_columns(STRATIFY_COLUMN)
+    shared_splits = {name: dataset[name] for name in ("test", "val")}
+
+    logger.info(
+        "generation task split: text_train=%s image_train=%s seed=%s",
+        len(text_train),
+        len(image_train),
+        seed,
+    )
+    return (
+        DatasetDict({"train": text_train, **shared_splits}),
+        DatasetDict({"train": image_train, **shared_splits}),
+    )
 
 
 def _build_dataloader(
