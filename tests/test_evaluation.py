@@ -1,9 +1,10 @@
 import pytest
 import torch
 from datasets import Dataset, DatasetDict
+from PIL import Image
 
 from project_x.eval import evaluate
-from project_x.eval.metrics import is_valid_svg
+from project_x.eval.metrics import is_valid_svg, normalized_pixel_mse
 from project_x.eval.render import SvgExtractionError, extract_svg, render_svg
 
 
@@ -66,21 +67,66 @@ def test_render_svg_writes_png(tmp_path):
     assert output_path.read_bytes().startswith(b"\x89PNG")
 
 
-def test_load_evaluation_rows_returns_raw_dataset_rows(monkeypatch):
-    validation = Dataset.from_dict(
+def test_load_evaluation_rows_filters_test_rows_by_task_length(monkeypatch):
+    test = Dataset.from_dict(
         {
             "filename": ["first.svg", "second.svg"],
             "svg": [SIMPLE_SVG, SIMPLE_SVG],
             "text": ["first", "second"],
+            "measured_length": [100, 13_000],
         }
     )
-    dataset = DatasetDict({"val": validation})
+    dataset = DatasetDict({"test": test})
     monkeypatch.setattr(evaluate, "get_tobias_dataset", lambda: dataset)
+    monkeypatch.setitem(
+        evaluate.SEQUENCE_LENGTH_FUNCTIONS,
+        "text",
+        lambda row: row["measured_length"],
+    )
 
-    rows = evaluate.load_evaluation_rows("text", "val", num_examples=1)
+    rows = evaluate.load_evaluation_rows("text", num_examples=2)
 
     assert len(rows) == 1
-    assert rows.column_names == ["filename", "svg", "text"]
+    assert rows[0]["filename"] == "first.svg"
+
+
+def test_normalized_pixel_mse(tmp_path):
+    target_path = tmp_path / "target.png"
+    identical_path = tmp_path / "identical.png"
+    different_path = tmp_path / "different.png"
+    Image.new("RGBA", (2, 2), "red").save(target_path)
+    Image.new("RGBA", (2, 2), "red").save(identical_path)
+    Image.new("RGBA", (2, 2), "blue").save(different_path)
+
+    assert normalized_pixel_mse(target_path, identical_path) == 0.0
+    assert normalized_pixel_mse(target_path, different_path) == 0.5
+
+
+def test_summarize_results_aggregates_render_metrics():
+    summary = evaluate.summarize_results(
+        [
+            {
+                "prediction_has_svg": True,
+                "prediction_is_valid_svg": True,
+                "prediction_rendered": True,
+                "pixel_mse": 0.1,
+            },
+            {
+                "prediction_has_svg": False,
+                "prediction_is_valid_svg": False,
+                "prediction_rendered": False,
+            },
+        ]
+    )
+
+    assert summary == {
+        "num_examples": 2,
+        "svg_extraction_rate": 0.5,
+        "valid_svg_rate": 0.5,
+        "render_success_rate": 0.5,
+        "pixel_mse_examples": 1,
+        "mean_pixel_mse": 0.1,
+    }
 
 
 def test_generate_svg_returns_decoded_completion_string(monkeypatch):

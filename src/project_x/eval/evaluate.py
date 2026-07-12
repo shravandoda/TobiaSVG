@@ -10,8 +10,13 @@ from peft import PeftModel
 from transformers import Qwen3VLProcessor
 
 from project_x.constants import DATA_PROCESSING_SEED, MAX_SEQUENCE_LENGTH
+from project_x.data.collators import (
+    image2svg_sequence_length,
+    repair_sequence_length,
+    text2svg_sequence_length,
+)
 from project_x.data.datasets import get_tobias_dataset, get_tobias_repair_dataset
-from project_x.eval.metrics import is_valid_svg
+from project_x.eval.metrics import is_valid_svg, normalized_pixel_mse
 from project_x.eval.render import extract_svg, render_svg
 from project_x.modeling.chat import (
     get_image2svg_prompt,
@@ -22,7 +27,12 @@ from project_x.modeling.chat import (
 from project_x.modeling.loading import get_model, get_processor
 from project_x.utils.svg import svg2pil
 
-TASKS = ("text", "image", "repair")
+SEQUENCE_LENGTH_FUNCTIONS = {
+    "text": text2svg_sequence_length,
+    "image": image2svg_sequence_length,
+    "repair": repair_sequence_length,
+}
+TASKS = tuple(SEQUENCE_LENGTH_FUNCTIONS)
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,9 +44,12 @@ def parse_args() -> argparse.Namespace:
         help="Path to a saved PEFT adapter directory.",
     )
     parser.add_argument("--task", choices=TASKS, required=True)
-    parser.add_argument("--split", choices=("val", "test"), default="val")
     parser.add_argument("--num-examples", type=int, default=10)
-    parser.add_argument("--max-new-tokens", type=int, default=8192)
+    parser.add_argument(
+        "--max-new-tokens",
+        type=int,
+        default=MAX_SEQUENCE_LENGTH,
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -58,8 +71,11 @@ def load_model_and_processor(adapter_path: Path):
     return model, processor
 
 
-def load_evaluation_rows(task: str, split: str, num_examples: int):
-    """Load a stable set of rows for one evaluation task."""
+def load_evaluation_rows(task: str, num_examples: int):
+    """Load stable test rows that fit the task's training context limit."""
+    if num_examples < 0:
+        raise ValueError("num_examples must be non-negative")
+
     if task in {"text", "image"}:
         dataset = get_tobias_dataset()
     elif task == "repair":
@@ -67,10 +83,20 @@ def load_evaluation_rows(task: str, split: str, num_examples: int):
     else:
         raise ValueError(f"Unknown evaluation task: {task}")
 
-    rows = dataset[split].shuffle(seed=DATA_PROCESSING_SEED)
-    sample_size = min(num_examples, len(rows))
+    rows = dataset["test"].shuffle(seed=DATA_PROCESSING_SEED)
+    if num_examples == 0:
+        return rows.select([])
 
-    return rows.select(range(sample_size))
+    sequence_length_fn = SEQUENCE_LENGTH_FUNCTIONS[task]
+    valid_indices = []
+
+    for index, row in enumerate(rows):
+        if sequence_length_fn(row) <= MAX_SEQUENCE_LENGTH:
+            valid_indices.append(index)
+        if len(valid_indices) == num_examples:
+            break
+
+    return rows.select(valid_indices)
 
 
 def generate_svg(
@@ -137,6 +163,8 @@ def save_example(
     example_dir.mkdir(parents=True, exist_ok=True)
 
     target_svg = row["svg"]
+    target_path = example_dir / "target.png"
+    prediction_path = example_dir / "prediction.png"
     (example_dir / "target.svg").write_text(target_svg, encoding="utf-8")
     (example_dir / "prediction.txt").write_text(generated_text, encoding="utf-8")
 
@@ -156,17 +184,20 @@ def save_example(
             predicted_svg,
             encoding="utf-8",
         )
-        render_svg(predicted_svg, example_dir / "prediction.png")
+        render_svg(predicted_svg, prediction_path)
         result["prediction_rendered"] = True
     except Exception as error:
         result["prediction_error"] = str(error)
 
     try:
-        render_svg(target_svg, example_dir / "target.png")
+        render_svg(target_svg, target_path)
         result["target_rendered"] = True
     except Exception as error:
         result["target_rendered"] = False
         result["target_error"] = str(error)
+
+    if result["prediction_rendered"] and result["target_rendered"]:
+        result["pixel_mse"] = normalized_pixel_mse(target_path, prediction_path)
 
     (example_dir / "result.json").write_text(
         json.dumps(result, indent=2),
@@ -175,11 +206,29 @@ def save_example(
     return result
 
 
+def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate validity, rendering, and pixel-error metrics."""
+    total = len(results)
+    mse_values = [result["pixel_mse"] for result in results if "pixel_mse" in result]
+
+    def rate(key: str) -> float:
+        return sum(bool(result[key]) for result in results) / total if total else 0.0
+
+    return {
+        "num_examples": total,
+        "svg_extraction_rate": rate("prediction_has_svg"),
+        "valid_svg_rate": rate("prediction_is_valid_svg"),
+        "render_success_rate": rate("prediction_rendered"),
+        "pixel_mse_examples": len(mse_values),
+        "mean_pixel_mse": sum(mse_values) / len(mse_values) if mse_values else None,
+    }
+
+
 def main() -> None:
     args = parse_args()
+    rows = load_evaluation_rows(args.task, args.num_examples)
     model, processor = load_model_and_processor(args.adapter_path)
-    rows = load_evaluation_rows(args.task, args.split, args.num_examples)
-    run_dir = args.output_dir / args.task / args.split
+    run_dir = args.output_dir / args.task / "test"
 
     results = []
     for index, row in enumerate(rows):
@@ -195,6 +244,10 @@ def main() -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "results.json").write_text(
         json.dumps(results, indent=2),
+        encoding="utf-8",
+    )
+    (run_dir / "summary.json").write_text(
+        json.dumps(summarize_results(results), indent=2),
         encoding="utf-8",
     )
 
