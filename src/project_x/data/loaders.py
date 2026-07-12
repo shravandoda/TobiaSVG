@@ -123,6 +123,7 @@ def _prepare_task_dataset(
     sequence_length_fn: Callable[[dict], int],
     columns: tuple[str, ...],
     task_name: str,
+    num_proc: int | None = None,
 ) -> DatasetDict:
     missing_splits = REQUIRED_SPLITS.difference(dataset)
     if missing_splits:
@@ -133,11 +134,13 @@ def _prepare_task_dataset(
     with_lengths = dataset.map(
         _add_sequence_length,
         fn_kwargs={"sequence_length_fn": sequence_length_fn},
+        num_proc=num_proc,
         desc=f"Measuring {task_name} sequence lengths",
     )
     filtered = with_lengths.filter(
         _within_sequence_limit,
         input_columns=["sequence_length"],
+        num_proc=num_proc,
         desc=f"Filtering {task_name} sequences",
     )
 
@@ -158,12 +161,14 @@ def get_text2svg_dataloader(
     dataset: DatasetDict,
     batch_size: int,
     num_workers: int = 0,
+    preprocessing_workers: int | None = None,
 ):
     dataset = _prepare_task_dataset(
         dataset,
         sequence_length_fn=text2svg_sequence_length,
         columns=("text", "svg"),
         task_name="text2svg",
+        num_proc=preprocessing_workers,
     )
     return _build_split_dataloaders(
         dataset,
@@ -177,12 +182,14 @@ def get_img2svg_dataloader(
     dataset: DatasetDict,
     batch_size: int,
     num_workers: int = 0,
+    preprocessing_workers: int | None = None,
 ):
     dataset = _prepare_task_dataset(
         dataset,
         sequence_length_fn=image2svg_sequence_length,
         columns=("svg",),
         task_name="image2svg",
+        num_proc=preprocessing_workers,
     )
     return _build_split_dataloaders(
         dataset,
@@ -196,12 +203,14 @@ def get_repair_dataloader(
     dataset: DatasetDict,
     batch_size: int,
     num_workers: int = 0,
+    preprocessing_workers: int | None = None,
 ):
     dataset = _prepare_task_dataset(
         dataset,
         sequence_length_fn=repair_sequence_length,
         columns=("svg", "corrupted_svg"),
         task_name="repair",
+        num_proc=preprocessing_workers,
     )
     return _build_split_dataloaders(
         dataset,

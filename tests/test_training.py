@@ -2,7 +2,8 @@ from types import SimpleNamespace
 
 import torch
 
-from project_x.training.checkpointing import sort_checkpoints
+from project_x.training import checkpointing
+from project_x.training.checkpointing import save_checkpoint, sort_checkpoints
 from project_x.training.train import repeat_dataloader, validate
 
 
@@ -88,3 +89,59 @@ def test_sort_checkpoints_orders_highest_step_first(tmp_path):
 
 def test_sort_checkpoints_returns_empty_list_when_none_exist(tmp_path):
     assert sort_checkpoints(tmp_path) == []
+
+
+class CheckpointModel:
+    def save_pretrained(self, output_dir, safe_serialization):
+        assert safe_serialization is True
+        output_dir.mkdir(parents=True)
+        (output_dir / "adapter_model.safetensors").touch()
+
+
+class CheckpointAccelerator:
+    is_main_process = True
+    _optimizers = ["optimizer"]
+    _schedulers = ["scheduler"]
+    _dataloaders = ["dataloader"]
+    state = SimpleNamespace(process_index=0)
+    step = 10
+    scaler = None
+    project_configuration = SimpleNamespace(save_on_each_node=False)
+
+    @staticmethod
+    def unwrap_model(model):
+        return model
+
+    @staticmethod
+    def wait_for_everyone():
+        pass
+
+    @staticmethod
+    def print(message):
+        pass
+
+
+def test_save_checkpoint_skips_frozen_model_state(tmp_path, monkeypatch):
+    saved_state = {}
+
+    def fake_save_accelerator_state(**kwargs):
+        saved_state.update(kwargs)
+
+    monkeypatch.setattr(
+        checkpointing,
+        "save_accelerator_state",
+        fake_save_accelerator_state,
+    )
+
+    save_checkpoint(
+        CheckpointAccelerator(),
+        CheckpointModel(),
+        tmp_path,
+        completed_steps=10,
+    )
+
+    checkpoint_dir = tmp_path / "checkpoints" / "checkpoint_000010"
+    assert (checkpoint_dir / "adapter" / "adapter_model.safetensors").exists()
+    assert saved_state["model_states"] == []
+    assert saved_state["optimizers"] == ["optimizer"]
+    assert not (tmp_path / "checkpoints" / ".checkpoint_000010.incomplete").exists()

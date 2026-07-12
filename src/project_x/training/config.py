@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 
 
@@ -15,6 +16,7 @@ class TobiasTrainingConfig:
     LOG_EVERY_STEPS: int = 10
     VALIDATE_EVERY_STEPS: int = 500
     MAX_VALIDATION_BATCHES: int = 50
+    PREPROCESSING_WORKERS: int = int(os.environ.get("PREPROCESSING_WORKERS", "1"))
     SEED: int = 42
 
     # LORA
@@ -32,7 +34,10 @@ class TobiasTrainingConfig:
     )
 
     # Checkpointing
-    PROJECT_DIR: str = "./artifacts/training/tobias-svg-qwen3.5-4b-lora"
+    PROJECT_DIR: str = os.environ.get(
+        "PROJECT_DIR",
+        "./artifacts/training/tobias-svg-qwen3.5-4b-lora",
+    )
     SAVE_EVERY_STEPS: int = 500
     KEEP_LAST_CHECKPOINTS: int = 3
 

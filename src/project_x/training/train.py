@@ -21,7 +21,7 @@ from project_x.data.loaders import (
 )
 from project_x.modeling.loading import get_model
 from project_x.training.checkpointing import (
-    register_peft_checkpoint_hooks,
+    register_peft_load_hook,
     resume_latest_checkpoint,
     save_checkpoint,
     save_final_adapter,
@@ -85,14 +85,17 @@ def build_training_loaders():
     text_train, _, text_val = get_text2svg_dataloader(
         text_dataset,
         batch_size=training_config.MICRO_BATCH_SIZE,
+        preprocessing_workers=training_config.PREPROCESSING_WORKERS,
     )
     image_train, _, image_val = get_img2svg_dataloader(
         image_dataset,
         batch_size=training_config.MICRO_BATCH_SIZE,
+        preprocessing_workers=training_config.PREPROCESSING_WORKERS,
     )
     repair_train, _, repair_val = get_repair_dataloader(
         repair_dataset,
         batch_size=training_config.MICRO_BATCH_SIZE,
+        preprocessing_workers=training_config.PREPROCESSING_WORKERS,
     )
 
     return (
@@ -223,7 +226,7 @@ def train(
             )
 
         if completed_steps % training_config.SAVE_EVERY_STEPS == 0:
-            save_checkpoint(accelerator, project_dir, completed_steps)
+            save_checkpoint(accelerator, model, project_dir, completed_steps)
 
 
 def main():
@@ -288,7 +291,7 @@ def main():
         ("repair", repair_val),
     )
 
-    register_peft_checkpoint_hooks(accelerator)
+    register_peft_load_hook(accelerator)
     completed_steps = resume_latest_checkpoint(accelerator, project_dir)
     train(
         accelerator,
