@@ -38,6 +38,7 @@ def build_accelerator(max_train_steps: int) -> Accelerator:
     accelerator = Accelerator(
         gradient_accumulation_plugin=accumulation,
         log_with="wandb",
+        step_scheduler_with_optimizer=False,
     )
 
     tracker_config = asdict(training_config)
@@ -112,6 +113,28 @@ def build_training_loaders():
 def repeat_dataloader(dataloader):
     while True:
         yield from dataloader
+
+
+def restart_scheduler(
+    scheduler,
+    optimizer,
+    learning_rate: float,
+    warmup_steps: int,
+    training_steps: int,
+) -> None:
+    """Start a fresh schedule while retaining the resumed optimizer state."""
+    if training_steps <= 0:
+        raise ValueError("The restarted scheduler requires remaining training steps")
+
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = learning_rate
+        param_group["initial_lr"] = learning_rate
+
+    scheduler.scheduler = get_cosine_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=warmup_steps,
+        num_training_steps=training_steps,
+    )
 
 
 @torch.inference_mode()
@@ -309,7 +332,31 @@ def main():
     )
 
     register_peft_load_hook(accelerator)
-    completed_steps = resume_latest_checkpoint(accelerator, project_dir)
+    resume_checkpoint = (
+        Path(training_config.RESUME_CHECKPOINT)
+        if training_config.RESUME_CHECKPOINT
+        else None
+    )
+    completed_steps = resume_latest_checkpoint(
+        accelerator,
+        project_dir,
+        checkpoint_path=resume_checkpoint,
+    )
+    if completed_steps and training_config.RESET_SCHEDULER_ON_RESUME:
+        remaining_steps = training_config.MAX_TRAIN_STEPS - completed_steps
+        restart_scheduler(
+            scheduler,
+            optimizer,
+            learning_rate=training_config.LR,
+            warmup_steps=training_config.WARMUP_STEPS,
+            training_steps=remaining_steps,
+        )
+        accelerator.print(
+            "restarted scheduler: "
+            f"lr={training_config.LR:g} "
+            f"warmup_steps={training_config.WARMUP_STEPS} "
+            f"training_steps={remaining_steps}"
+        )
     train(
         accelerator,
         model,

@@ -8,7 +8,7 @@ from project_x.training.checkpointing import (
     save_checkpoint,
     sort_checkpoints,
 )
-from project_x.training.train import repeat_dataloader, validate
+from project_x.training.train import repeat_dataloader, restart_scheduler, validate
 
 
 class EpochLoader:
@@ -79,6 +79,31 @@ def test_validate_averages_batches_and_tasks():
         "validation/loss": 3.0,
     }
     assert model.training is True
+
+
+def test_restart_scheduler_replaces_loaded_schedule():
+    parameter = torch.nn.Parameter(torch.tensor(1.0))
+    optimizer = torch.optim.AdamW([parameter], lr=2e-4)
+    loaded_scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer,
+        lr_lambda=lambda _: 0.5,
+    )
+    scheduler = SimpleNamespace(scheduler=loaded_scheduler)
+
+    restart_scheduler(
+        scheduler,
+        optimizer,
+        learning_rate=1e-5,
+        warmup_steps=1,
+        training_steps=5,
+    )
+
+    assert scheduler.scheduler is not loaded_scheduler
+    assert scheduler.scheduler.base_lrs == [1e-5]
+    parameter.grad = torch.tensor(0.0)
+    optimizer.step()
+    scheduler.scheduler.step()
+    assert scheduler.scheduler.get_last_lr() == [1e-5]
 
 
 def test_sort_checkpoints_orders_highest_step_first(tmp_path):

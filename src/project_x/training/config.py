@@ -9,10 +9,10 @@ class TobiasTrainingConfig:
     MICRO_BATCH_SIZE: int = 1
 
     # Core training config
-    LR: float = 2e-4  # Standard for LoRA
+    LR: float = float(os.environ.get("LR", "2e-4"))
     WEIGHT_DECAY: float = 0.01
-    WARMUP_STEPS: int = 1_000
-    MAX_TRAIN_STEPS: int = 36_000
+    WARMUP_STEPS: int = int(os.environ.get("WARMUP_STEPS", "1000"))
+    MAX_TRAIN_STEPS: int = int(os.environ.get("MAX_TRAIN_STEPS", "36000"))
     LOG_EVERY_STEPS: int = 10
     VALIDATE_EVERY_STEPS: int = 500
     MAX_VALIDATION_BATCHES: int = 50
@@ -37,6 +37,10 @@ class TobiasTrainingConfig:
     PROJECT_DIR: str = os.environ.get(
         "PROJECT_DIR",
         "./artifacts/training/tobias-svg-qwen3.5-4b-lora",
+    )
+    RESUME_CHECKPOINT: str | None = os.environ.get("RESUME_CHECKPOINT")
+    RESET_SCHEDULER_ON_RESUME: bool = (
+        os.environ.get("RESET_SCHEDULER_ON_RESUME", "false").lower() == "true"
     )
     SAVE_EVERY_STEPS: int = 500
     KEEP_LAST_CHECKPOINTS: int = 3

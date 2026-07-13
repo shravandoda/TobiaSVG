@@ -45,15 +45,21 @@ def sort_checkpoints(project_dir: Path) -> list[tuple[int, Path]]:
 def resume_latest_checkpoint(
     accelerator: Accelerator,
     project_dir: Path,
+    checkpoint_path: Path | None = None,
 ) -> int:
-    checkpoints = sort_checkpoints(project_dir)
-    if not checkpoints:
-        return 0
-    _, latest_checkpoint = checkpoints[0]
+    if checkpoint_path is None:
+        checkpoints = sort_checkpoints(project_dir)
+        if not checkpoints:
+            return 0
+        _, checkpoint_path = checkpoints[0]
 
-    accelerator.print(f"resuming from checkpoint: {latest_checkpoint}")
-    accelerator.load_state(str(latest_checkpoint))
-    return int(latest_checkpoint.name.removeprefix(CHECKPOINT_PREFIX))
+    step_text = checkpoint_path.name.removeprefix(CHECKPOINT_PREFIX)
+    if not checkpoint_path.is_dir() or not step_text.isdigit():
+        raise ValueError(f"Invalid checkpoint directory: {checkpoint_path}")
+
+    accelerator.print(f"resuming from checkpoint: {checkpoint_path}")
+    accelerator.load_state(str(checkpoint_path))
+    return int(step_text)
 
 
 def save_checkpoint(
