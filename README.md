@@ -263,8 +263,7 @@ shown here was valid and renderable.
 
 ### Mean Pixel MSE
 
-Mean pixel MSE across the 13 examples rendered successfully by both local
-models. Lower is better.
+Mean pixel MSE across the common renderable comparison set. Lower is better.
 
 | Model | Mean MSE |
 | --- | ---: |
