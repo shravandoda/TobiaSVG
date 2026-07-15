@@ -1,7 +1,7 @@
 [project]
 name = "project-x"
 version = "0.1.0"
-description = "Add your description here"
+description = "Fine-tuning multimodal models for semantic SVG generation and repair"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -13,6 +13,7 @@ dependencies = [
     "groq>=0.31.0",
     "huggingface-hub>=1.21.0",
     "liger-kernel==0.8.0",
+    "openai>=2.0.0",
     "peft>=0.19.1",
     "pillow>=12.2.0",
     "rich>=15.0.0",
@@ -33,6 +34,7 @@ packages = ["src/project_x"]
 include = [
     "/LICENSE",
     "/README.md",
+    "/dataset_cards",
     "/pyproject.toml",
     "/scripts",
     "/src/project_x",

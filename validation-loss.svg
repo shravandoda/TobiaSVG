@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" role="img" aria-labelledby="title description">
+  <title id="title">Validation loss over 36,000 optimizer steps</title>
+  <desc id="description">A smoothed validation-loss curve connected across resumed training runs.</desc>
+
+  <defs>
+    <path id="loss-curve" d="M 95.0 109.8 C 97.0 108.0, 104.0 98.1, 107.5 99.3 C 111.0 100.6, 111.0 107.8, 115.9 117.2 C 120.8 126.6, 129.9 144.5, 136.9 155.8 C 143.9 167.0, 150.9 178.5, 157.9 184.7 C 164.9 190.8, 171.9 189.7, 178.9 192.7 C 185.9 195.7, 192.9 197.9, 199.9 202.8 C 206.9 207.7, 213.9 215.3, 220.9 222.0 C 227.9 228.7, 234.9 238.3, 241.9 243.2 C 248.9 248.1, 255.9 246.5, 262.9 251.4 C 269.9 256.4, 276.9 267.0, 283.9 273.0 C 290.9 279.0, 297.9 282.5, 304.9 287.3 C 311.9 292.1, 318.9 296.8, 325.9 301.8 C 332.9 306.7, 339.9 312.1, 346.9 316.9 C 353.9 321.8, 360.9 327.5, 367.9 330.7 C 374.9 334.0, 381.9 334.0, 388.9 336.6 C 395.9 339.1, 402.9 343.3, 409.9 346.0 C 416.9 348.6, 423.9 350.6, 430.9 352.5 C 437.9 354.3, 444.9 356.0, 451.9 357.0 C 458.9 358.0, 465.9 358.3, 472.9 358.6 C 479.9 358.8, 486.9 358.6, 493.9 358.6 C 500.9 358.6, 507.9 358.4, 514.9 358.6 C 521.9 358.7, 528.9 359.2, 535.9 359.4 C 542.9 359.7, 549.9 359.6, 556.9 360.0 C 563.9 360.5, 570.9 361.7, 577.9 362.3 C 584.9 362.9, 591.9 363.2, 598.9 363.6 C 605.9 363.9, 612.9 364.2, 619.9 364.4 C 626.9 364.7, 633.9 365.5, 640.9 365.1 C 647.9 364.7, 654.9 362.4, 661.9 362.1 C 668.9 361.8, 675.9 363.1, 682.9 363.4 C 689.9 363.7, 696.9 363.9, 703.9 364.0 C 710.9 364.1, 717.9 364.1, 724.9 364.2 C 731.9 364.3, 738.9 365.6, 745.9 364.6 C 752.9 363.5, 759.9 358.5, 766.9 357.8 C 773.9 357.0, 780.9 359.4, 787.9 360.0 C 794.9 360.7, 801.9 361.4, 808.9 361.8 C 815.9 362.2, 822.9 361.9, 829.9 362.3 C 836.9 362.7, 843.9 363.8, 850.9 364.2 C 857.9 364.7, 864.9 364.9, 871.9 365.1 C 878.9 365.4, 889.2 365.7, 892.9 365.8 C 896.5 365.9, 893.7 365.9, 893.9 365.9"/>
+  </defs>
+
+  <rect x="8" y="9" width="944" height="462" rx="8" fill="#24313a" opacity="0.12"/>
+  <rect x="4" y="4" width="944" height="462" rx="8" fill="#fcfcf7" stroke="#24313a" stroke-width="3"/>
+
+  <g font-family="ui-rounded, 'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif" letter-spacing="0" fill="#24313a">
+    <text x="64" y="51" font-size="27" font-weight="800">Validation loss</text>
+    <text x="895" y="49" text-anchor="end" font-size="14" font-weight="700" fill="#607079">36K updates</text>
+
+    <g fill="none" stroke="#ccd8d4" stroke-width="2" stroke-dasharray="7 8" stroke-linecap="round">
+      <path d="M 96 111 H 896"/>
+      <path d="M 96 173 H 896"/>
+      <path d="M 96 235 H 896"/>
+      <path d="M 96 297 H 896"/>
+      <path d="M 96 359 H 896"/>
+    </g>
+
+    <path d="M 96 80 V 390 H 896" fill="none" stroke="#24313a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <g font-size="14" font-weight="700" fill="#607079" text-anchor="end">
+      <text x="80" y="116">0.38</text>
+      <text x="80" y="178">0.36</text>
+      <text x="80" y="240">0.34</text>
+      <text x="80" y="302">0.32</text>
+      <text x="80" y="364">0.30</text>
+    </g>
+
+    <g stroke="#24313a" stroke-width="3" stroke-linecap="round">
+      <path d="M 96 390 V 399"/>
+      <path d="M 207 390 V 399"/>
+      <path d="M 318 390 V 399"/>
+      <path d="M 429 390 V 399"/>
+      <path d="M 540 390 V 399"/>
+      <path d="M 652 390 V 399"/>
+      <path d="M 763 390 V 399"/>
+      <path d="M 874 390 V 399"/>
+    </g>
+
+    <g font-size="14" font-weight="700" fill="#607079" text-anchor="middle">
+      <text x="96" y="421">0</text>
+      <text x="207" y="421">5K</text>
+      <text x="318" y="421">10K</text>
+      <text x="429" y="421">15K</text>
+      <text x="540" y="421">20K</text>
+      <text x="652" y="421">25K</text>
+      <text x="763" y="421">30K</text>
+      <text x="874" y="421">35K</text>
+    </g>
+
+    <text x="496" y="452" text-anchor="middle" font-size="15" font-weight="800">Optimizer step</text>
+    <text x="27" y="235" text-anchor="middle" font-size="15" font-weight="800" transform="rotate(-90 27 235)">Loss</text>
+  </g>
+
+  <use href="#loss-curve" fill="none" stroke="#24313a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" opacity="0.16" transform="translate(3 4)"/>
+  <use href="#loss-curve" fill="none" stroke="#e66a3c" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <use href="#loss-curve" fill="none" stroke="#ffb38c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+
+  <circle cx="894" cy="366" r="7" fill="#ffcf5c" stroke="#24313a" stroke-width="3"/>
+  <path d="M 866 336 C 875 341, 883 349, 890 358" fill="none" stroke="#24313a" stroke-width="2.5" stroke-linecap="round"/>
+  <g font-family="ui-rounded, 'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif" letter-spacing="0">
+    <rect x="797" y="306" width="78" height="35" rx="7" fill="#ffcf5c" stroke="#24313a" stroke-width="2.5"/>
+    <text x="836" y="329" text-anchor="middle" font-size="15" font-weight="800" fill="#24313a">0.298</text>
+  </g>
+</svg>

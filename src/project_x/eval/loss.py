@@ -5,11 +5,19 @@ import json
 from pathlib import Path
 
 from accelerate import Accelerator
+from datasets import DatasetDict
 from liger_kernel.transformers import apply_liger_kernel_to_qwen3_5
 from peft import PeftModel
 
+from project_x.data.datasets import get_tobias_dataset, get_tobias_repair_dataset
+from project_x.data.loaders import (
+    get_img2svg_dataloader,
+    get_repair_dataloader,
+    get_text2svg_dataloader,
+)
 from project_x.modeling.loading import get_model
-from project_x.training.train import build_training_loaders, validate
+from project_x.training.config import training_config
+from project_x.training.train import validate
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,6 +51,34 @@ def load_evaluation_model(adapter_path: Path | None):
     return model
 
 
+def validation_only(dataset: DatasetDict) -> DatasetDict:
+    validation = dataset["val"]
+    placeholder = validation.select(range(min(1, len(validation))))
+    return DatasetDict({"train": placeholder, "test": placeholder, "val": validation})
+
+
+def build_validation_loaders():
+    dataset = validation_only(get_tobias_dataset())
+    repair_dataset = validation_only(get_tobias_repair_dataset())
+
+    _, _, text_val = get_text2svg_dataloader(
+        dataset,
+        batch_size=training_config.MICRO_BATCH_SIZE,
+        preprocessing_workers=training_config.PREPROCESSING_WORKERS,
+    )
+    _, _, image_val = get_img2svg_dataloader(
+        dataset,
+        batch_size=training_config.MICRO_BATCH_SIZE,
+        preprocessing_workers=training_config.PREPROCESSING_WORKERS,
+    )
+    _, _, repair_val = get_repair_dataloader(
+        repair_dataset,
+        batch_size=training_config.MICRO_BATCH_SIZE,
+        preprocessing_workers=training_config.PREPROCESSING_WORKERS,
+    )
+    return text_val, image_val, repair_val
+
+
 def main() -> None:
     args = parse_args()
     if args.max_batches <= 0:
@@ -50,14 +86,7 @@ def main() -> None:
 
     accelerator = Accelerator()
     with accelerator.main_process_first():
-        (
-            _,
-            _,
-            _,
-            text_val,
-            image_val,
-            repair_val,
-        ) = build_training_loaders()
+        text_val, image_val, repair_val = build_validation_loaders()
 
     model = load_evaluation_model(args.adapter_path)
     model, text_val, image_val, repair_val = accelerator.prepare(

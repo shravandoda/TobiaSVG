@@ -1,1 +1,1 @@
-"""Dataset loading, task formatting, batching, and curriculum sampling helpers."""
+"""Dataset loading, task formatting, and batching helpers."""

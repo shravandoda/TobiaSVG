@@ -8,6 +8,10 @@ from typing import Any
 import torch
 from peft import PeftModel
 from transformers import Qwen3VLProcessor
+from transformers.generation.logits_process import (
+    LogitsProcessorList,
+    RepetitionPenaltyLogitsProcessor,
+)
 
 from project_x.constants import DATA_PROCESSING_SEED, MAX_SEQUENCE_LENGTH
 from project_x.data.collators import (
@@ -40,8 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--adapter-path",
         type=Path,
-        required=True,
-        help="Path to a saved PEFT adapter directory.",
+        help="Saved PEFT adapter directory. Omit to evaluate the base model.",
     )
     parser.add_argument("--task", choices=TASKS, required=True)
     parser.add_argument("--num-examples", type=int, default=10)
@@ -51,6 +54,18 @@ def parse_args() -> argparse.Namespace:
         default=MAX_SEQUENCE_LENGTH,
     )
     parser.add_argument(
+        "--max-generation-seconds",
+        type=float,
+        default=None,
+        help="Optional wall-clock limit for each generated example.",
+    )
+    parser.add_argument(
+        "--repetition-penalty",
+        type=float,
+        default=1.0,
+        help="Penalty above 1.0 discourages repeated generated tokens.",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("artifacts/evaluation"),
@@ -58,12 +73,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_model_and_processor(adapter_path: Path):
+def load_model_and_processor(adapter_path: Path | None):
     """Load the base model, processor, and saved PEFT adapter."""
     processor = get_processor()
-    base_model = get_model()
-
-    model = PeftModel.from_pretrained(base_model, adapter_path)
+    model = get_model()
+    if adapter_path is not None:
+        model = PeftModel.from_pretrained(model, adapter_path)
 
     model = model.to("cuda")
     model.eval()
@@ -105,6 +120,8 @@ def generate_svg(
     row: dict[str, Any],
     task: str,
     max_new_tokens: int,
+    max_generation_seconds: float | None = None,
+    repetition_penalty: float = 1.0,
 ) -> str:
     """Generate raw model text from prompt-only inputs for one row."""
     image = None
@@ -142,10 +159,27 @@ def generate_svg(
     generation_length = min(max_new_tokens, available_tokens)
 
     with torch.inference_mode():
+        generation_kwargs = {
+            "max_new_tokens": generation_length,
+            "do_sample": False,
+            "stop_strings": ["</svg>"],
+            "tokenizer": processor.tokenizer,
+        }
+        if repetition_penalty != 1.0:
+            generation_kwargs["logits_processor"] = LogitsProcessorList(
+                [
+                    RepetitionPenaltyLogitsProcessor(
+                        repetition_penalty,
+                        prompt_ignore_length=prompt_length,
+                    )
+                ]
+            )
+        if max_generation_seconds is not None:
+            generation_kwargs["max_time"] = max_generation_seconds
+
         output = model.generate(
             **inputs,
-            max_new_tokens=generation_length,
-            do_sample=False,
+            **generation_kwargs,
         )
 
     generated_ids = output[:, prompt_length:]
@@ -226,6 +260,11 @@ def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
 
 def main() -> None:
     args = parse_args()
+    if args.max_generation_seconds is not None and args.max_generation_seconds <= 0:
+        raise ValueError("--max-generation-seconds must be positive")
+    if args.repetition_penalty <= 0:
+        raise ValueError("--repetition-penalty must be positive")
+
     rows = load_evaluation_rows(args.task, args.num_examples)
     model, processor = load_model_and_processor(args.adapter_path)
     run_dir = args.output_dir / args.task / "test"
@@ -238,6 +277,8 @@ def main() -> None:
             row,
             args.task,
             args.max_new_tokens,
+            args.max_generation_seconds,
+            args.repetition_penalty,
         )
         results.append(save_example(run_dir, index, row, generated_text))
 

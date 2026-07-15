@@ -31,6 +31,4 @@ uv run python -m scripts.data.process_dataset --dataset starvector_diagrams --sa
 uv run python -m scripts.data.build_repair_dataset --sample-size 100 --workers 8
 uv run python -m scripts.data.build_repair_dataset --package-only
 uv run python -m scripts.data.analyze_svg_stats
-uv run python -m scripts.data.push_dataset --repo-id USER_OR_ORG/REPO
-uv run python -m scripts.data.push_dataset --repo-id USER_OR_ORG/REPAIR_REPO --dataset-path data/processed/repair_datasets/tobiasvg_repair
 ```

@@ -22,6 +22,8 @@ class FakeBatch(dict):
 
 
 class FakeProcessor:
+    tokenizer = object()
+
     def __call__(self, **kwargs):
         assert kwargs["text"] == ["serialized prompt"]
         return FakeBatch(input_ids=torch.tensor([[1, 2, 3]]))
@@ -35,10 +37,24 @@ class FakeProcessor:
 class FakeModel:
     device = torch.device("cpu")
 
-    def generate(self, *, input_ids, max_new_tokens, do_sample):
+    def generate(
+        self,
+        *,
+        input_ids,
+        max_new_tokens,
+        do_sample,
+        logits_processor,
+        stop_strings,
+        tokenizer,
+    ):
         assert input_ids.tolist() == [[1, 2, 3]]
         assert max_new_tokens == 10
         assert do_sample is False
+        assert len(logits_processor) == 1
+        assert logits_processor[0].penalty == 1.1
+        assert logits_processor[0].prompt_ignore_length == 3
+        assert stop_strings == ["</svg>"]
+        assert tokenizer is FakeProcessor.tokenizer
         return torch.tensor([[1, 2, 3, 4, 5]])
 
 
@@ -143,6 +159,7 @@ def test_generate_svg_returns_decoded_completion_string(monkeypatch):
         {"text": "draw a square"},
         task="text",
         max_new_tokens=10,
+        repetition_penalty=1.1,
     )
 
     assert generated == SIMPLE_SVG
