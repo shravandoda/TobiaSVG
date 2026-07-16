@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  This project is for Tobias, my black pug.
+</p>
+
+<p align="center">
   <a href="https://huggingface.co/datasets/shravandoda/TobiaSVG"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-TobiaSVG-yellow" alt="TobiaSVG dataset"></a>
   <a href="https://huggingface.co/shravandoda/TobiaSVG"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Model-TobiaSVG-orange" alt="TobiaSVG model"></a>
   <img src="https://img.shields.io/badge/Python-3.12-blue" alt="Python 3.12">
@@ -20,7 +24,8 @@
   <a href="#vision-encoder-context">Vision encoders</a> ·
   <a href="#method">Method</a> ·
   <a href="#training">Training</a> ·
-  <a href="#results">Results</a>
+  <a href="#results">Results</a> ·
+  <a href="#collaborators">Collaborators</a>
 </p>
 
 ---
@@ -271,6 +276,24 @@ Mean pixel MSE across the common renderable comparison set. Lower is better.
 | **TobiaSVG** | **0.0529** |
 | Gemini 3.1 Flash | 0.2065 |
 | GPT-5.3-Codex | 0.0930 |
+
+## Collaborators
+
+Huge thanks to my friends and collaborators
+[tehruhn](https://github.com/tehruhn) and
+[Abhi-2526](https://github.com/Abhi-2526), who were an important part of the
+thinking behind this project. They gave me people to bounce ideas off, question
+assumptions with, and work through the many decisions that came up along the
+way. Our discussions helped shape the training curriculum, refine the evaluation
+methodology, and clarify the finer details of the model architecture. Just as
+importantly, they were always willing to dig into an idea, offer a different
+perspective, point out gaps in my reasoning, and talk through alternatives when
+the right direction was not obvious. Building and training a model involves far
+more than writing code or launching a run, and having friends who were genuinely
+interested in the problems, tradeoffs, failures, and small breakthroughs made
+the entire process more thoughtful, productive, and enjoyable. I am deeply
+grateful for their time, curiosity, encouragement, and all the conversations
+that helped turn an early idea into TobiaSVG.
 
 ## Limitations
 
