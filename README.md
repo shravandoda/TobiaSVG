@@ -280,8 +280,8 @@ Mean pixel MSE across the common renderable comparison set. Lower is better.
 ## Collaborators
 
 Huge thanks to my friends and collaborators
-[tehruhn](https://github.com/tehruhn) and
-[Abhi-2526](https://github.com/Abhi-2526), who were an important part of the
+[Tarun Raheja](https://github.com/tehruhn) and
+[Abhinav Sood](https://github.com/Abhi-2526), who were an important part of the
 thinking behind this project. They gave me people to bounce ideas off, question
 assumptions with, and work through the many decisions that came up along the
 way. Our discussions helped shape the training curriculum, refine the evaluation
